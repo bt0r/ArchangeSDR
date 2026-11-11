@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
-"""ArchangeSDR: sweeps frequency ranges with an RTL-SDR dongle and reports those where someone is
-talking (and, on FM radio, the stations that are on the air).
+"""ArchangeSDR: sweeps frequency ranges with SDR receivers (RTL-SDR dongles, others through SoapySDR) and
+reports those where someone is talking (and, on FM radio, the stations that are on the air).
 
     archangesdr [--profile P]                GTK window (scan, detection log, statistics, settings)
     archangesdr --cli 144-146 [--passes N]   same detection in the terminal (tests, tuning)

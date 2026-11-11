@@ -11,11 +11,11 @@ so `restart()` re-executes the name it was started with. `migrate_old_name` move
 folders and rewrites the paths stored in the history; `SDRSCANNER_PROFILE` is still read. The `L_SCN_`
 string keys keep their prefix (the desktops' scripts share them).
 
-An RTL-SDR conversation scanner: it sweeps frequency ranges and lists the frequencies where someone
-is **talking** (plus the FM stations on the air), with a 2.5 s capture and a recording of the whole
-conversation. A GTK 4 window, a `--cli` mode for tuning the detection, in en / fr / de / es. It ships
-standalone and inside two desktops by the same author: archSDR (Hyprland) and uBonsole (i3 on the
-ClockworkPi uConsole, an ARM handheld running Debian).
+An SDR conversation scanner (RTL-SDR dongles, other receivers through SoapySDR): it sweeps frequency
+ranges and lists the frequencies where someone is **talking** (plus the FM stations on the air), with a
+2.5 s capture and a recording of the whole conversation. A GTK 4 window, a `--cli` mode for tuning the
+detection, in en / fr / de / es. It ships standalone and inside two desktops by the same author: archSDR
+(Hyprland) and uBonsole (i3 on the ClockworkPi uConsole, an ARM handheld running Debian).
 
 ## Architecture decisions (keep them)
 

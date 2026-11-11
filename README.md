@@ -1,9 +1,10 @@
 # ArchangeSDR
 
-**A lightweight RTL-SDR scanner that finds people talking.** It sweeps the bands you choose, listens
+**A lightweight SDR scanner that finds people talking.** It sweeps the bands you choose, listens
 only where something transmits, keeps what sounds like speech and records the whole conversation.
-One Python file, packages from your distribution, nothing to compile: it runs on any Linux, from a
-desktop PC to a ClockworkPi uConsole.
+RTL-SDR dongles out of the box; HackRF, Airspy, SDRplay, LimeSDR, PlutoSDR… through SoapySDR. One
+Python file, packages from your distribution, nothing to compile: it runs on any Linux, from a desktop
+PC to a ClockworkPi uConsole.
 
 ![ArchangeSDR during a scan: one dongle records an airband conversation, the other surveys PMR446](docs/screenshots/main.png)
 
