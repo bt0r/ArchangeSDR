@@ -30,8 +30,9 @@ that, which keeps it fast on a small ARM board.
 - **Whole conversations recorded**, pauses included, until 20 s of silence; a 2.5 s preview of each one.
 - **Interference memory**: a frequency heard 3 times in a row without speech is banned for good; mark
   the false positives as "not interference".
-- **Several dongles** share the work, each taking first what only it can tune (HF on a Blog V4), never
-  two on the same frequency.
+- **Several receivers** share the work, each taking first what only it can tune (HF on a Blog V4), never
+  two on the same frequency. RTL-SDR dongles out of the box; HackRF, Airspy, SDRplay, LimeSDR, PlutoSDR…
+  through SoapySDR (optional).
 - **Join**: open a frequency in GQRX, SDR++, rtl_fm or your own command.
 - **Transcription** (optional), searchable: whisper.cpp on the machine itself, or any OpenAI-compatible
   API.
@@ -63,6 +64,7 @@ Ubuntu 22.04, Fedora 36, openSUSE Leap 15.4 or newer.
 | Transcription | whisper.cpp (`whisper-cli`), free and local, **or** an OpenAI-compatible API (a local server, OpenAI, Scaleway, Mistral, Groq…) | see [Transcription with whisper.cpp](#transcription-with-whispercpp) |
 | Push notifications | the free [ntfy](https://ntfy.sh) app on your phone, subscribed to a topic (ntfy.sh or your own server) | nothing on the computer |
 | Desktop notifications | `notify-send` and a notification daemon | `libnotify` (`libnotify-bin` on Debian / Ubuntu) |
+| Receivers other than RTL-SDR (HackRF, Airspy, SDRplay, LimeSDR, PlutoSDR…) | SoapySDR's Python module and the receiver's SoapySDR module; the receiver must sample at 2.4 MS/s or more (the Airspy HF+ cannot) | Arch: `soapysdr` plus `soapyhackrf`, `soapyairspy`…; Debian / Ubuntu: `python3-soapysdr` plus `soapysdr-module-hackrf`, `soapysdr-module-airspy`… (or `soapysdr-module-all`); elsewhere the SoapySDR Python bindings and the module of the receiver |
 
 ## Install
 
@@ -179,8 +181,14 @@ each region says how it treats listening.
 ## Contributing
 
 [AGENT.md](AGENT.md) explains the design decisions, the conventions and how to test without a dongle;
-`tools/` holds the region generator and the screenshot script. Strings live in `lang/<lang>.sh`
-(English, French, German, Spanish).
+`tools/` holds the region generator, the screenshot script and a benchmark (`tools/bench.py`: the
+processing cost of each scan step on your machine). Strings live in `lang/<lang>.sh` (English, French,
+German, Spanish). The tests need nothing more than the program itself (synthetic signals, fake
+receivers):
+
+```bash
+python3 -m unittest            # about 40 s
+```
 
 ## License
 

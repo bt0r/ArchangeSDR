@@ -30,7 +30,21 @@ ClockworkPi uConsole, an ARM handheld running Debian).
   recordings) and the analysis of a block would cost the next one. If the stream delivers nothing, it
   falls back to blocking reads; `SDR_ASYNC=0` forces them.
   Below 24 MHz: direct sampling (Q branch), except on the RTL-SDR Blog V4 (HF upconverter, R828D tuner).
-- **Signal processing in numpy only** (FFT slices for channel extraction, no scipy).
+- **Other receivers through SoapySDR, optional** (`soapy`, `soapy_devices`, `SoapySdr`, `open_receiver`):
+  `import SoapySDR` is probed; without it, RTL-SDR only. `SoapySdr` has `RtlSdr`'s interface (`tune`,
+  `read`, `coverage`, `rate`, `gain`...); its stream runs from one tune to the next. RTL-SDR dongles stay
+  on librtlsdr even when soapyrtlsdr is installed. A receiver needs 2.4 MS/s or more (the hop plan is
+  ±1.2 MHz): `pick_rate` takes 2.4 MS/s, else the lowest rate above (Airspy R2: 2.5 MS/s).
+- **The sample rate belongs to the receiver** (`sdr.rate`, `Capture.rate`), never `FS` in the
+  processing: `Grid` turns the detection's widths in Hz (`SMOOTH_HZ`, `FLOOR_HZ`, `PEAK_SEP_HZ`,
+  `DC_HZ`) into bins of ~1.17 kHz at any rate (2048 bins at 2.4 MS/s, the values the detection was tuned
+  with); coarser bins move the SSB carrier guessed from the voice's centroid.
+- **Signal processing in numpy only** (no scipy). A channel (`Channel`) is a mixer and two decimating
+  FIR filters (2.4 MS/s → 96 kS/s → 16 kS/s, `Decimator`, then `Resampler` for a rate that is not a
+  multiple of 16 kHz), fed block by block with its state carried over: same output as the whole capture
+  at once, a fixed cost per block. An FFT of the whole capture cost 2.6 s per 2.5 s listen on a
+  Raspberry Pi 4 (CM4); keep the processing per block. Check: `tools/bench.py` (above 100 % "real
+  time", the machine cannot keep up with the dongle).
 - **External programs are optional and probed** (`launch`, `run_quiet`, `FileNotFoundError` caught):
   pw-play / paplay / aplay, notify-send, gqrx, xdg-open, pkill / pgrep, hyprctl. A missing one must
   never crash the app.
@@ -52,7 +66,9 @@ ClockworkPi uConsole, an ARM handheld running Debian).
   narrow peaks above the threshold become candidates. Listen: on 1 MHz windows around the candidates.
   Every other pass, the hops shift by 50 kHz so the DC spike never hides the same channel.
   The speed idea comes from FalconSDR (0.1 s per window); unlike it, we keep the speech verdict.
-- **Progressive listen** (`Scanner._listen`, `decided`): 0.5 s blocks, analysed from 1 s on; it stops
+- **Progressive listen** (`Scanner._listen`, `decided`): 0.5 s blocks, analysed from 1 s on (a
+  `Capture` keeps the frame spectra and the channels already extracted: each analysis only processes the
+  new block); it stops
   when every survey candidate is gone, a continuous carrier, wide or scores below `LISTEN_GIVE_UP`, or
   when speech is confirmed (from `LISTEN_VOICE_S` = 1.5 s); the dwell setting is the maximum.
   `analyze` runs several times per listen, so it must stay free of side effects: the continuous-carrier
@@ -176,8 +192,21 @@ because the strings and `CONF` are read at import.
 
 ## Testing
 
-There is no test suite and the dongle is not always plugged in. What works:
+The dongle is not always plugged in; the tests need none.
 
+- **`python3 -m unittest`** (about 40 s, the standard library and numpy only, runs in a CI as is):
+  `tests/test_static.py` (Python 3.8 syntax, `bash -n`, every string in the four languages with the
+  same %-arguments, the default ranges), `test_dsp.py` (helpers, demodulation, speech criteria),
+  `test_detector.py` (synthetic scenes through survey and analyze: speech in NFM, AM, USB, LSB; music,
+  carrier, wide signal, burst, noise, two speakers, FM stations; other sample rates; the detector's
+  memory), `test_scanner.py` (the sweep plan and whole scans on fake receivers, recording included),
+  `test_soapy.py` (a fake SoapySDR module). `tests/support.py` has the speech generator (glottal
+  pulses, formants, syllables: invented, no real recording), the emitters, `Scene` and `FakeSdr`.
+- The detector's numbers (score, SNR, frequency) are compared with `tests/baseline.json` within a margin.
+  After a deliberate change of the processing: `python3 -m tests.test_detector --update-baseline`, then
+  read the diff of the JSON. A verdict that changes is a regression, not a baseline to update.
+- `ARCHANGESDR_PROGRAM=/path/to/archangesdr python3 -m unittest` tests another copy (an installed one, a
+  modified one: break a constant and check that a test fails).
 - `archangesdr --cli 144-146 --passes 2` with a dongle: every signal, its criteria and the verdict.
 - Without a dongle: load the file as a module (`importlib.machinery.SourceFileLoader`), give a
   `Scanner` a fake SDR object (`tune`, `read` returning complex64 IQ at 2.4 MS/s) and call

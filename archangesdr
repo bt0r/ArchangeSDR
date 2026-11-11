@@ -193,18 +193,22 @@ DB_PATH = os.path.join(DATA_DIR, "scanner.db")
 CLIPS_DIR = os.path.join(DATA_DIR, "clips")     # the audio of the captures that triggered a detection
 RECORDINGS_DIR = os.path.join(DATA_DIR, "recordings")   # the whole conversations that followed them
 
-FS = 2_400_000            # samples / s: the 1 MHz window fits on one side of the DC spike
+FS = 2_400_000            # samples / s: the 1 MHz window fits on one side of the DC spike. A receiver that
+                          # cannot do 2.4 MS/s takes the closest rate above (the plan below needs ±1.2 MHz)
 WINDOW = 1_000_000        # width of a listening window
 SURVEY_HALF = 1_080_000   # survey: ±1.08 MHz (90 % of the ±1.2 MHz the dongle captures; the filter roll-off at the
                           # edges is taken care of by the local noise floor)
 SURVEY_STEP = 2_060_000   # step between two survey hops (100 kHz overlap)
 SURVEY_S = 0.1            # duration of a survey hop: 117 FFTs averaged, enough to see a narrow peak
-FLOOR_BINS = 128          # survey noise floor: median of ~150 kHz blocks, so the roll-off does not hide the edges
+FLOOR_HZ = 150_000        # survey noise floor: median of 150 kHz blocks, so the roll-off does not hide the edges
 QUIET_PASSES = (2, 10, 30)  # muting after listening without speech: intermittent signal, continuous, ignored carrier
 DC_GAP = 50_000           # the window starts 50 kHz above the tuned frequency (DC spike outside the window)
-NFFT = 2048               # 1.17 kHz bins
+NFFT = 2048               # at 2.4 MS/s: 1.17 kHz bins (other rates: an FFT size giving bins of that width)
+BIN_HZ = FS / NFFT
+DC_HZ = 3_500             # around the tuned frequency: the DC spike (3 bins on each side)
 FRAME_S = 0.1             # one spectrogram row every 100 ms
-SMOOTH_BINS = 5           # ~6 kHz: "channel" power
+SMOOTH_HZ = 6_000         # "channel" power: averaged over ~6 kHz (5 bins)
+PEAK_SEP_HZ = 6_000       # two peaks of a listen at least ±6 kHz apart
 MIN_TX_S = 0.8            # a shorter transmission is a pulse or a data burst
 HANG_S = 0.3              # pause tolerated inside a transmission (between two words)
 MAX_WIDTH_HZ = 30_000     # wider than a voice channel: broadcast, wide digital
@@ -510,9 +514,13 @@ def usb_strings(lib, index):
 
 
 def list_devices():
-    """The RTL-SDR dongles plugged in, without opening them: index, USB strings, id. The id is the
-    serial number, or serial#index when two dongles share it (many leave the factory with 00000001:
-    rtl_eeprom -s gives each its own)."""
+    """The receivers plugged in, without opening them: the RTL-SDR dongles (index, USB strings, id), then
+    what SoapySDR finds, if it is installed. A dongle's id is its serial number, or serial#index when two
+    dongles share it (many leave the factory with 00000001: rtl_eeprom -s gives each its own)."""
+    return rtl_devices() + soapy_devices()
+
+
+def rtl_devices():
     try:
         lib = rtl_lib()
     except OSError:
@@ -520,7 +528,7 @@ def list_devices():
     out = []
     for i in range(lib.rtlsdr_get_device_count()):
         maker, product, serial = usb_strings(lib, i)
-        out.append({"index": i, "maker": maker, "product": product, "serial": serial,
+        out.append({"index": i, "backend": "rtlsdr", "maker": maker, "product": product, "serial": serial,
                     "chip": (lib.rtlsdr_get_device_name(i) or b"").decode(errors="replace")})
     serials = [d["serial"] for d in out]
     for d in out:
@@ -565,11 +573,15 @@ def receivers():
         d["label"] = c.get("label") or c.get("name") or " ".join(x for x in (d["maker"], d["product"]) if x) \
             or d["chip"] or "RTL-SDR"
         d["gain"], d["hf"], d["tuner"] = c.get("gain"), c.get("hf"), c.get("tuner")
+        d["coverage"], d["gain_range"] = c.get("coverage"), c.get("gain_range")
     return devs
 
 
-def coverage_text(tuner, hf):
-    """'R828D · 0.5 – 1766 MHz' for the receiver list."""
+def coverage_text(tuner, hf, coverage=None, name=None):
+    """'R828D · 0.5 – 1766 MHz' for the receiver list; a SoapySDR receiver: the coverage learned at its
+    first opening, after its name."""
+    if tuner is None and coverage:
+        return "%s · %s MHz" % (name or "SoapySDR", ", ".join("%g – %g" % (a / 1e6, b / 1e6) for a, b in coverage))
     name, segs = TUNERS.get(tuner, (None, None))
     if not segs:
         return ""
@@ -601,7 +613,8 @@ class RtlSdr:
         self.hf = self.v4 or (hf if hf is not None else "Blog V3" in self.name)
         if self.v4 and "V4" not in self.name:
             self.name = "RTL-SDR Blog V4"
-        lib.rtlsdr_set_sample_rate(self.dev, FS)
+        self.rate = FS
+        lib.rtlsdr_set_sample_rate(self.dev, self.rate)
         lib.rtlsdr_set_agc_mode(self.dev, 0)
         lib.rtlsdr_set_tuner_gain_mode(self.dev, 1)
         n = lib.rtlsdr_get_tuner_gains(self.dev, None)
@@ -634,7 +647,7 @@ class RtlSdr:
             self.direct = direct
         self.lib.rtlsdr_set_center_freq(self.dev, int(hz))
         self.lib.rtlsdr_reset_buffer(self.dev)
-        self.read(int(FS * 0.03), None)   # the PLL settles: drop 30 ms
+        self.read(int(self.rate * 0.03), None)   # the PLL settles: drop 30 ms
 
     def start_stream(self):
         """Continuous reading from here on (until the next tune): the USB transfers stay queued, no
@@ -649,7 +662,7 @@ class RtlSdr:
                 st["chunks"].append(data)
                 st["bytes"] += n
                 st["got"] = True
-                while st["bytes"] > STREAM_MAX_S * FS * 2 and len(st["chunks"]) > 1:
+                while st["bytes"] > STREAM_MAX_S * self.rate * 2 and len(st["chunks"]) > 1:
                     st["bytes"] -= len(st["chunks"].pop(0))
                 st["cond"].notify()
 
@@ -700,11 +713,13 @@ class RtlSdr:
                 st["cond"].wait(0.1)
         return bytes(out)
 
+    # uint8 sample → float: one lookup per byte, and the I, Q pairs read as complex64 in place (the
+    # arithmetic on 4.8 million bytes a second cost ~10 % of a Raspberry Pi 4 core)
+    IQ_LUT = ((np.arange(256) - 127.4) / 128.0).astype(np.float32)
+
     @staticmethod
     def _iq(raw):
-        iq = np.frombuffer(raw, dtype=np.uint8).astype(np.float32)
-        iq = (iq - 127.4) / 128.0
-        return iq[0::2] + 1j * iq[1::2]
+        return RtlSdr.IQ_LUT[np.frombuffer(raw, dtype=np.uint8)].view(np.complex64)
 
     def read(self, n_samples, stop):
         """n_samples complex samples, or None if stop is set between two blocks."""
@@ -731,10 +746,167 @@ class RtlSdr:
             self.dev = None
 
 
+# --- Other receivers: SoapySDR (optional) -------------------------------------------------------
+# HackRF, Airspy, SDRplay, LimeSDR, PlutoSDR... through SoapySDR's Python module and its device modules,
+# packaged by the distributions (python-soapysdr / python3-soapysdr, soapyhackrf / soapysdr-module-hackrf...).
+# Without it, the RTL-SDR dongles only. The dongles stay on librtlsdr even when soapyrtlsdr is installed:
+# direct sampling, the Blog V4's upconverter and the tuner's coverage are handled there.
+
+SOAPY_SKIP = ("rtlsdr", "audio")
+_SOAPY = []
+
+
+def soapy():
+    """The SoapySDR module, or None when it is not installed (or broken)."""
+    if not _SOAPY:
+        try:
+            import SoapySDR
+        except Exception:
+            SoapySDR = None
+        _SOAPY.append(SoapySDR)
+    return _SOAPY[0]
+
+
+def soapy_devices():
+    """The receivers SoapySDR finds, RTL-SDR dongles excepted, as list_devices() describes them; the id is
+    driver:serial (driver:label without a serial)."""
+    S = soapy()
+    if S is None:
+        return []
+    try:
+        found = [{k: kw[k] for k in kw.keys()} for kw in S.Device.enumerate()]
+    except Exception:
+        return []
+    out = []
+    for i, args in enumerate(a for a in found if a.get("driver") not in SOAPY_SKIP):
+        driver = args.get("driver", "soapy")
+        serial = args.get("serial", "")
+        out.append({"index": "soapy%d" % i, "backend": "soapy", "args": args, "maker": driver,
+                    "product": args.get("label", ""), "serial": serial, "chip": driver,
+                    "id": "%s:%s" % (driver, serial or args.get("label") or i)})
+    return out
+
+
+class SoapySdr:
+    """A SoapySDR receiver behind RtlSdr's interface. The stream runs from one tune to the next (the driver
+    queues the samples: none is lost between two reads), so start_stream / stop_stream have nothing to
+    do; tune() restarts it, so no sample of the previous frequency is read after it."""
+
+    def __init__(self, args, gain_db):
+        S = self.S = soapy()
+        if S is None:
+            raise RuntimeError(T("L_SCN_ERR_NO_SOAPY"))
+        name = args.get("label") or args.get("driver") or "SoapySDR"
+        try:
+            self.dev = S.Device(args)
+        except Exception as e:
+            raise RuntimeError(T("L_SCN_ERR_OPEN_SDR", name, e))
+        rx = S.SOAPY_SDR_RX
+        self.name = name
+        self.rate = self.pick_rate(self.dev.listSampleRates(rx, 0), self.dev.getSampleRateRange(rx, 0))
+        if self.rate is None:
+            high = max(list(self.dev.listSampleRates(rx, 0)) +
+                       [r.maximum() for r in self.dev.getSampleRateRange(rx, 0)] + [0])
+            self.close()
+            raise RuntimeError(T("L_SCN_ERR_RATE", name, high / 1e6))
+        self.dev.setSampleRate(rx, 0, self.rate)
+        try:
+            self.dev.setGainMode(rx, 0, False)
+        except Exception:
+            pass                      # no AGC on this receiver
+        r = self.dev.getGainRange(rx, 0)
+        self.gain_range = (r.minimum(), r.maximum())
+        self.dev.setGain(rx, 0, min(max(gain_db, r.minimum()), r.maximum()))
+        self.gain = round(self.dev.getGain(rx, 0), 1)
+        self.segs = [(max(r.minimum(), HF_LOW), r.maximum()) for r in self.dev.getFrequencyRange(rx, 0)
+                     if r.maximum() > HF_LOW]
+        self.tuner, self.direct = None, 0
+        self.hf = any(a < 24e6 for a, _ in self.segs)
+        self.stream = self.dev.setupStream(rx, S.SOAPY_SDR_CF32)
+        self.active = False
+
+    @staticmethod
+    def pick_rate(rates, ranges):
+        """2.4 MS/s when the receiver does it, else the lowest rate above it (the hop plan needs ±1.2 MHz);
+        None if it cannot reach 2.4 MS/s."""
+        above = [float(x) for x in rates if x >= FS]
+        for r in ranges:
+            if r.minimum() <= FS <= r.maximum():
+                return FS
+            if r.minimum() > FS:
+                above.append(r.minimum())
+        if FS in above:
+            return FS
+        return min(above) if above else None
+
+    def coverage(self):
+        return list(self.segs)
+
+    def tune(self, hz):
+        if self.active:
+            self.dev.deactivateStream(self.stream)
+            self.active = False
+        self.dev.setFrequency(self.S.SOAPY_SDR_RX, 0, hz)
+        self.read(int(self.rate * 0.03), None)   # the PLL settles: drop 30 ms
+
+    def start_stream(self):
+        pass
+
+    def stop_stream(self):
+        pass
+
+    def read(self, n_samples, stop):
+        """n_samples complex samples, or None if stop is set meanwhile."""
+        S = self.S
+        if not self.active:
+            self.dev.activateStream(self.stream)
+            self.active = True
+        out = np.empty(n_samples, np.complex64)
+        got, fails = 0, 0
+        while got < n_samples:
+            if stop is not None and stop.is_set():
+                return None
+            sr = self.dev.readStream(self.stream, [out[got:]], n_samples - got, timeoutUs=500_000)
+            if sr.ret > 0:
+                got += sr.ret
+                fails = 0
+            elif sr.ret != S.SOAPY_SDR_OVERFLOW:     # an overflow only says samples were dropped: go on
+                fails += 1
+                if fails > 6:
+                    raise RuntimeError(T("L_SCN_ERR_READ"))
+        return out
+
+    def close(self):
+        if getattr(self, "stream", None) is not None:
+            if self.active:
+                self.dev.deactivateStream(self.stream)
+            self.dev.closeStream(self.stream)
+            self.stream = None
+        if getattr(self, "dev", None) is not None:
+            unmake = getattr(self.S.Device, "unmake", None)
+            if unmake:
+                unmake(self.dev)
+            self.dev = None
+
+
+def open_receiver(device, gain_db, async_ok=True, hf=None):
+    """The receiver of a list_devices() entry, opened."""
+    if device.get("backend") == "soapy":
+        return SoapySdr(device["args"], gain_db)
+    return RtlSdr(device["index"], gain_db, async_ok, hf)
+
+
+def gqrx_input(device):
+    """GQRX's (gr-osmosdr) device string for a list_devices() entry."""
+    if device.get("backend") == "soapy":
+        return "soapy=0," + ",".join("%s=%s" % kv for kv in sorted(device["args"].items()))
+    return "rtl=%s" % device["index"]
+
+
 # --- Detection -----------------------------------------------------------------------------------
 
-def local_floor(p, block=FLOOR_BINS):
-    """Noise floor bin by bin: median of blocks of FLOOR_BINS bins, interpolated. A narrow signal is a
+def local_floor(p, block=128):
+    """Noise floor bin by bin: median of blocks of block bins (FLOOR_HZ), interpolated. A narrow signal is a
     small part of its block; the roll-off of the dongle's filter lowers the edges of the capture, which a
     single median would count as "below the noise"."""
     n = len(p) // block
@@ -774,6 +946,212 @@ def run_bounds(mask):
                 best = (cur_start, i)
             cur_start = None
     return best
+
+
+def lowpass(taps, cutoff, rate, stop_db=60):
+    """Windowed-sinc low-pass FIR (Kaiser window, stop_db of rejection), unity gain at DC."""
+    n = np.arange(taps) - (taps - 1) / 2
+    h = np.sinc(2 * cutoff / rate * n) * np.kaiser(taps, 0.1102 * (stop_db - 8.7))
+    return h / h.sum()
+
+
+class Decimator:
+    """FIR low-pass and keep one sample out of d, block after block (the filter's memory is carried over,
+    so blocks fed in turn give exactly what the whole signal at once gives)."""
+
+    def __init__(self, d, h):
+        k = -(-len(h) // d)
+        h = np.concatenate([h, np.zeros(k * d - len(h))])
+        self.d, self.k = d, k
+        # output m = sum over j of the input rows m-j (d samples each) times taps[j]: k small products
+        self.taps = h.reshape(k, d)[:, ::-1].astype(np.complex64)
+        self.hist = np.zeros((k - 1) * d, np.complex64)
+        self.rest = np.zeros(0, np.complex64)
+
+    def feed(self, x):
+        if len(self.rest):
+            x = np.concatenate([self.rest, x])
+        m = len(x) // self.d
+        self.rest = x[m * self.d:].copy()
+        rows = np.concatenate([self.hist, x[:m * self.d]]).reshape(-1, self.d)
+        k = self.k
+        y = rows[k - 1:k - 1 + m] @ self.taps[0]
+        for j in range(1, k):
+            y += rows[k - 1 - j:k - 1 - j + m] @ self.taps[j]
+        if k > 1:
+            self.hist = rows[-(k - 1):].ravel().copy()
+        return y
+
+
+class Resampler:
+    """Linear interpolation from a rate a little above the audio rate down to it, block after block."""
+
+    def __init__(self, ratio):
+        self.ratio = ratio        # input samples per output sample (> 1)
+        self.pos = 0.0            # where the next output falls, in the buffer (prev + block)
+        self.prev = None
+
+    def feed(self, x):
+        buf = np.concatenate([[self.prev], x]) if self.prev is not None else x
+        if len(buf) < 2:
+            return np.zeros(0, np.complex64)
+        n = int((len(buf) - 1 - self.pos) // self.ratio) + 1 if self.pos <= len(buf) - 1 else 0
+        p = self.pos + self.ratio * np.arange(n)
+        i = np.minimum(p.astype(np.int64), len(buf) - 2)
+        w = (p - i).astype(np.float32)
+        y = (buf[i] * (1 - w) + buf[i + 1] * w).astype(np.complex64)
+        self.pos += self.ratio * n - (len(buf) - 1)
+        self.prev = buf[-1]
+        return y
+
+
+class Channel:
+    """One narrow channel of the capture at baseband and at the audio rate: a mixer, then two decimating
+    filters (2.4 MS/s → 96 kS/s → 16 kS/s, ±8 kHz kept). Fed block by block with no seam, at a fixed cost
+    per block: an FFT of the whole capture did the same with a cost and a memory that grew with the
+    capture (2.6 s of processing for 2.5 s of signal on a Raspberry Pi 4)."""
+
+    MIX_ROW = 4800       # the oscillator is a fixed table times one rotation per row of this length
+
+    def __init__(self, offset, rate=FS, out_rate=2 * AUDIO_HALF_BW):
+        # total decimation d = d1 × d2, d2 small; a rate that is not a multiple of 16 kHz (Airspy: 2.5 MS/s)
+        # ends a little above it and is resampled
+        d = int(rate // out_rate)
+        while not any(d % k == 0 for k in (6, 5, 4, 8, 3, 2)) and d > 2:
+            d -= 1
+        d2 = next((k for k in (6, 5, 4, 8, 3, 2) if d % k == 0 and d > k), 1)
+        d1 = d // d2
+        mid = rate / d1
+        # first stage: wide transition (8 kHz → mid - 8 kHz), only what folds onto ±8 kHz matters;
+        # second stage: 7 → 9 kHz, the edge of the audio band
+        self.stages = [Decimator(d1, lowpass(int(3.7 * rate / (mid - out_rate)) | 1, mid / 2, rate))]
+        if d2 > 1:
+            self.stages.append(Decimator(d2, lowpass(int(3.7 * mid / 2000) | 1, out_rate / 2, mid)))
+        if abs(rate / d - out_rate) > 1e-6 * out_rate:
+            self.stages.append(Resampler(rate / d / out_rate))
+        self.w = -2 * np.pi * offset / rate
+        self.rot = np.exp(1j * self.w * np.arange(self.MIX_ROW)).astype(np.complex64)
+        self.n = 0           # samples mixed so far: the oscillator's phase goes on from block to block
+
+    def feed(self, x):
+        n, row = len(x), self.MIX_ROW
+        rows = -(-n // row)
+        start = np.exp(1j * ((self.w * (self.n + row * np.arange(rows))) % (2 * np.pi))).astype(np.complex64)
+        if n % row:
+            x = np.concatenate([x, np.zeros(rows * row - n, np.complex64)])
+        y = (x.reshape(rows, row) * self.rot * start[:, None]).ravel()[:n]
+        self.n += n
+        for st in self.stages:
+            y = st.feed(y)
+        return y
+
+
+class Grid:
+    """The spectrum's layout at a sample rate: an FFT whose bins stay ~1.17 kHz wide, and the detection's
+    widths in bins. At 2.4 MS/s: 2048 bins, the values the detection was tuned with. Coarser bins would
+    move the centroid of an SSB voice by several hundred Hz, and the carrier guessed from it."""
+
+    _cache = {}
+
+    def __init__(self, rate):
+        self.rate = rate
+        # the closest size made of factors 2, 3 and 5 (fast FFT): 2.5 MS/s → 2160, 3 MS/s → 2560
+        want = rate / BIN_HZ
+        sizes = [2 ** i * 3 ** j * 5 ** k for i in range(16) for j in range(6) for k in range(5)]
+        self.nfft = min(sizes, key=lambda n: (abs(n - want), n))
+        self.bin = rate / self.nfft
+        self.win = np.hanning(self.nfft).astype(np.float32)
+        self.smooth = max(1, int(round(SMOOTH_HZ / self.bin)))
+        self.floor = max(2, int(round(FLOOR_HZ / self.bin)))
+        self.sep = max(1, int(round(PEAK_SEP_HZ / self.bin)))
+
+    @classmethod
+    def of(cls, rate=FS):
+        if rate not in cls._cache:
+            cls._cache[rate] = cls(rate)
+        return cls._cache[rate]
+
+    def freqs(self, tuned):
+        return tuned + (np.arange(self.nfft) - self.nfft // 2) * self.bin
+
+    def smoothed(self, p):
+        """p averaged over SMOOTH_HZ, bin by bin (rows of a 2-D p)."""
+        kernel = np.ones(self.smooth) / self.smooth
+        if p.ndim == 1:
+            return np.convolve(p, kernel, mode="same")
+        return np.apply_along_axis(lambda r: np.convolve(r, kernel, mode="same"), 1, p)
+
+
+def frame_spectra(x, rate=FS):
+    """Power spectrum (centred) of each FRAME_S frame of x, averaged over the frame's segments."""
+    g = Grid.of(rate)
+    n_frame = int(rate * FRAME_S)
+    nf, segs = len(x) // n_frame, n_frame // g.nfft
+    xx = x[:nf * n_frame].reshape(nf, n_frame)[:, :segs * g.nfft].reshape(nf, segs, g.nfft)
+    F = np.fft.fft(xx * g.win, axis=2)
+    return np.fft.fftshift((F.real ** 2 + F.imag ** 2).mean(axis=1), axes=1)
+
+
+class Capture:
+    """The samples of a listen, and what the analysis draws from them block by block: the spectrum of each
+    frame and the channels already extracted. The progressive listen adds a block and analyses again:
+    only the new block is processed."""
+
+    CHANNEL_STEP = 100   # Hz: a signal's centre moves a little from one analysis to the next, its channel stays
+
+    def __init__(self, tuned, rate=FS):
+        self.tuned, self.rate = tuned, rate
+        self.blocks, self.n = [], 0
+        self.spectra, self._P = [], None
+        self.pending = np.zeros(0, np.complex64)     # the start of an incomplete frame
+        self.channels = {}
+
+    @classmethod
+    def of(cls, iq, tuned, rate=FS):
+        cap = cls(tuned, rate)
+        cap.add(iq)
+        return cap
+
+    def add(self, iq):
+        self.blocks.append(iq)
+        self.n += len(iq)
+        x = np.concatenate([self.pending, iq]) if len(self.pending) else iq
+        n_frame = int(self.rate * FRAME_S)
+        nf = len(x) // n_frame
+        if nf:
+            self.spectra.append(frame_spectra(x[:nf * n_frame], self.rate))
+            self._P = None
+        self.pending = x[nf * n_frame:].copy()
+
+    @property
+    def P(self):
+        """Spectrum of every complete frame (frames × bins)."""
+        if self._P is None:
+            self._P = np.concatenate(self.spectra) if self.spectra else \
+                np.zeros((0, Grid.of(self.rate).nfft), np.float32)
+            self.spectra = [self._P]
+        return self._P
+
+    @property
+    def iq(self):
+        """All the samples (the FM broadcast analysis works on the whole capture)."""
+        if len(self.blocks) == 1:
+            return self.blocks[0]
+        return np.concatenate(self.blocks) if self.blocks else np.zeros(0, np.complex64)
+
+    def channel(self, center):
+        """The channel centred on center, at 16 kHz, from the start of the capture."""
+        key = int(round((center - self.tuned) / self.CHANNEL_STEP))
+        c = self.channels.get(key)
+        if c is None:
+            c = self.channels[key] = [Channel(key * self.CHANNEL_STEP, self.rate), [], 0]
+        ch, out, fed = c
+        for b in self.blocks[fed:]:
+            out.append(ch.feed(b))
+        c[2] = len(self.blocks)
+        if len(out) != 1:
+            out[:] = [np.concatenate(out) if out else np.zeros(0, np.complex64)]
+        return out[0]
 
 
 def voice_features(audio, rate):
@@ -860,25 +1238,24 @@ class Detector:
                     QUIET_PASSES[1] if sig["occupancy"] >= CONT_OCCUPANCY else QUIET_PASSES[0]
                 self.quiet[k] = passes + n
 
-    def survey(self, iq, tuned, lo, hi):
+    def survey(self, iq, tuned, lo, hi, rate=FS):
         """Survey: narrow peaks above the threshold in [lo, hi] (mean spectrum of a short hop).
         Returns (spectrum for the display, [(frequency, dB above noise)])."""
-        n_frame = int(FS * FRAME_S)
+        g = Grid.of(rate)
+        n_frame = int(rate * FRAME_S)
         n_frames = max(1, len(iq) // n_frame)
-        segs = len(iq) // NFFT
-        win = np.hanning(NFFT).astype(np.float32)
-        P = (np.abs(np.fft.fft(iq[:segs * NFFT].reshape(segs, NFFT) * win, axis=1)) ** 2)
-        P = np.fft.fftshift(P, axes=1)
+        segs = len(iq) // g.nfft
+        F = np.fft.fft(iq[:segs * g.nfft].reshape(segs, g.nfft) * g.win, axis=1)
+        P = np.fft.fftshift(F.real ** 2 + F.imag ** 2, axes=1)
         Pmean = P.mean(axis=0)
-        Pmax = P.reshape(n_frames, -1, NFFT).mean(axis=1).max(axis=0) if segs % n_frames == 0 else Pmean
-        freqs = tuned + (np.arange(NFFT) - NFFT // 2) * FS / NFFT
-        dc = np.abs(freqs - tuned) < 3 * FS / NFFT
+        Pmax = P.reshape(n_frames, -1, g.nfft).mean(axis=1).max(axis=0) if segs % n_frames == 0 else Pmean
+        freqs = g.freqs(tuned)
+        dc = np.abs(freqs - tuned) < DC_HZ
         keep = (freqs >= lo) & (freqs <= hi)
-        kernel = np.ones(SMOOTH_BINS) / SMOOTH_BINS
         clean = Pmean.copy()
         clean[dc] = np.median(Pmean[~dc])
-        floor = local_floor(clean)
-        S = 10 * np.log10(np.convolve(np.maximum(Pmean, Pmax), kernel, mode="same") / floor + 1e-12)
+        floor = local_floor(clean, g.floor)
+        S = 10 * np.log10(g.smoothed(np.maximum(Pmean, Pmax)) / floor + 1e-12)
         S[dc] = 0.0
         Sk, fk = S[keep], freqs[keep]
         cands, taken = [], np.zeros(len(fk), bool)
@@ -893,30 +1270,27 @@ class Detector:
             while b < len(fk) - 1 and Sk[b + 1] > Sk[k] - 10:
                 b += 1
             taken[a:b + 1] = True
-            if (b - a + 1) * FS / NFFT <= MAX_WIDTH_HZ:      # wide signals are not conversations
+            if (b - a + 1) * g.bin <= MAX_WIDTH_HZ:      # wide signals are not conversations
                 cands.append((float(fk[k]), float(Sk[k])))
-        mean = 10 * np.log10(np.convolve(Pmean, kernel, mode="same") / floor + 1e-12)
+        mean = 10 * np.log10(g.smoothed(Pmean) / floor + 1e-12)
         mean[dc] = 0.0
         disp = self._display(fk, mean[keep][None, :], np.array([True]))
         disp["peak"] = self._display(fk, Sk[None, :], np.array([True]))["mean"]
         return disp, sorted(cands)
 
-    def analyze(self, iq, tuned, lo, hi, band):
-        """Returns (spectrum for the display, list of signals) for the window [lo, hi]."""
-        n_frame = int(FS * FRAME_S)
-        n_frames = len(iq) // n_frame
-        segs = n_frame // NFFT
-        win = np.hanning(NFFT).astype(np.float32)
-        x = iq[:n_frames * n_frame].reshape(n_frames, n_frame)[:, :segs * NFFT].reshape(n_frames, segs, NFFT)
-        P = (np.abs(np.fft.fft(x * win, axis=2)) ** 2).mean(axis=1)
-        P = np.fft.fftshift(P, axes=1)
-        freqs = tuned + (np.arange(NFFT) - NFFT // 2) * FS / NFFT
+    def analyze(self, iq, tuned, lo, hi, band, rate=FS):
+        """Returns (spectrum for the display, list of signals) for the window [lo, hi]. iq: the samples, or
+        the Capture of a progressive listen (what earlier analyses computed is reused)."""
+        cap = iq if isinstance(iq, Capture) else Capture.of(iq, tuned, rate)
+        g = Grid.of(cap.rate)
+        P = cap.P
+        n_frames = len(P)
+        freqs = g.freqs(tuned)
         if band.mode == "WFM":
-            return self._stations(iq, tuned, lo, hi, P, freqs)
+            return self._stations(cap.iq, tuned, lo, hi, P, freqs, cap.rate)
         keep = (freqs >= lo) & (freqs <= hi)
         P, freqs = P[:, keep], freqs[keep]
-        kernel = np.ones(SMOOTH_BINS) / SMOOTH_BINS
-        Ps = np.apply_along_axis(lambda r: np.convolve(r, kernel, mode="same"), 1, P)
+        Ps = g.smoothed(P)
         floor = np.median(P, axis=1, keepdims=True)
         S = 10 * np.log10(Ps / floor + 1e-12)
         on = S > self.threshold
@@ -928,8 +1302,8 @@ class Detector:
         Smax = np.where(good[:, None], S, -50).max(axis=0)
 
         min_frames = int(MIN_TX_S / FRAME_S)
-        half = 5   # peaks at least ±6 kHz apart
-        signals, X = [], None
+        half = g.sep
+        signals = []
         order = np.argsort(-Smax)
         taken = np.zeros(len(freqs), bool)
         for k in order:
@@ -954,15 +1328,13 @@ class Detector:
             taken[a:b + 1] = True
             lin = 10 ** (Smax[a:b + 1] / 10)
             centroid = float((freqs[a:b + 1] * lin).sum() / lin.sum())
-            width = (b - a + 1) * FS / NFFT
-            if X is None:
-                X = np.fft.fft(iq)
+            width = (b - a + 1) * g.bin
             if width > MAX_WIDTH_HZ and not white:
                 sig = {"freq": centroid, "snr": float(Smax[k]), "occupancy": float(occupancy[k]),
                        "tx_s": tx_s, "width": width,
                        "voice": False, "continuous": False, "score": 0.0, "demod": "", "mode": band.mode,
                        "reason": T("L_SCN_REASON_WIDE", width / 1000)}
-                self._capture(X, len(iq), tuned, centroid, "fm", tx, sig)
+                self._capture(cap, centroid, "fm", tx, sig)
                 signals.append(sig)
                 continue
             key = int(round(centroid / 6250))
@@ -972,9 +1344,9 @@ class Detector:
                    "mode": band.mode, "reason": T("L_SCN_REASON_CONTINUOUS")}
             signals.append(sig)
             if sig["continuous"]:
-                self._capture(X, len(iq), tuned, centroid, "am" if band.mode == "AM" else "fm", tx, sig)
+                self._capture(cap, centroid, "am" if band.mode == "AM" else "fm", tx, sig)
             else:
-                self._voice(X, len(iq), tuned, tx, band, sig)
+                self._voice(cap, tx, band, sig)
             if white and not sig["voice"]:
                 # a false positive for the user: captured (and recorded) like speech
                 sig.update(voice=True, whitelisted=True, reason=None, freq=sig.get("center", sig["freq"]))
@@ -999,7 +1371,7 @@ class Detector:
             else:
                 self.continuous.pop(key, None)
 
-    def _voice(self, X, n, tuned, on_frames, band, sig):
+    def _voice(self, cap, on_frames, band, sig):
         """Demodulates the signal in every plausible way for the range, keeps the most "speech-like"."""
         f0, f1 = run_bounds(on_frames)
         rate = 2 * AUDIO_HALF_BW
@@ -1009,15 +1381,10 @@ class Detector:
             # FM and AM are still tried: 10 m and 6 m also have FM segments.
             carrier = sig["freq"] - 1500 if band.mode == "USB" else sig["freq"] + 1500
             tries.insert(0, ("ssb", carrier, band.mode))
-        df = FS / n
-        half = int(AUDIO_HALF_BW / df)
         t0, t1 = int(f0 * FRAME_S * rate), int(f1 * FRAME_S * rate)
         best = None
         for kind, center, mode in tries:
-            # Channel extraction in the frequency domain: a ±8 kHz slice of the FFT of the whole
-            # capture, inverse transform = baseband signal at 16 kHz
-            c = int(round((center - tuned) / df))
-            z = np.fft.ifft(np.fft.ifftshift(X[np.arange(c - half, c + half) % n]))[t0:t1]
+            z = cap.channel(center)[t0:t1]
             feats = voice_features(demodulate(z, kind, rate), rate)
             dyn, mod, bandr, voiced = feats
             score = min(dyn / VOICE_DYN_DB, mod / VOICE_MOD_RATIO, bandr / VOICE_BAND_RATIO,
@@ -1028,7 +1395,7 @@ class Detector:
         sig["demod"] = kind
         sig["voice"] = best[0] >= 1.0
         sig["peak"], sig["center"] = sig["freq"], center   # the energy / the SSB carrier, 1.5 kHz beside it
-        self._capture(X, n, tuned, center, kind, on_frames, sig)
+        self._capture(cap, center, kind, on_frames, sig)
         if not sig["voice"]:
             sig["reason"] = T("L_SCN_REASON_NO_VOICE", best[0])
             return
@@ -1036,25 +1403,22 @@ class Detector:
         sig["reason"] = None
 
     @staticmethod
-    def _capture(X, n, tuned, center, kind, on_frames, sig):
+    def _capture(cap, center, kind, on_frames, sig):
         """The audio of the whole capture, silent outside the transmission (the FM noise between two
         stretches of speech would cover everything), to play back what triggered the detection."""
         rate = 2 * AUDIO_HALF_BW
-        df = FS / n
-        half = int(AUDIO_HALF_BW / df)
-        c = int(round((center - tuned) / df))
-        audio = demodulate(np.fft.ifft(np.fft.ifftshift(X[np.arange(c - half, c + half) % n])), kind, rate)
+        audio = demodulate(cap.channel(center), kind, rate)
         gate = np.repeat(on_frames, int(FRAME_S * rate))[:len(audio)]
         audio = audio[:len(gate)] * gate
         peak = np.abs(audio).max()
         sig["gain"] = 0.9 / peak if peak > 0 else 1.0      # the recording that follows keeps the same level
         sig["audio"] = audio * sig["gain"]
 
-    def _stations(self, iq, tuned, lo, hi, P, freqs):
+    def _stations(self, iq, tuned, lo, hi, P, freqs, rate=FS):
         """FM radio stations: ±75 kHz channels on the 100 kHz raster, above the threshold during the whole
         listen, stronger than their neighbours at ±100 kHz and occupied over their whole width (not a line)."""
         P = P.copy()
-        dc = np.flatnonzero(np.abs(freqs - tuned) < 3 * FS / NFFT)
+        dc = np.flatnonzero(np.abs(freqs - tuned) < DC_HZ)
         P[:, dc] = P[:, dc.max() + 1][:, None]           # the DC spike can fall in a station at the edge
         # a station at the edge of the window spills over: keep what the capture sees beyond it
         usable = (freqs >= lo - FM_RASTER - FM_HALF_BW) & (freqs <= hi + FM_RASTER)
@@ -1081,22 +1445,21 @@ class Detector:
                 continue
             if any(snr[j] > snr[i] or (snr[j] == snr[i] and j < i) for j in near):
                 continue   # the neighbouring channel is the centre of the station
-            sig = {"freq": float(g), "snr": float(snr[i]), "occupancy": occ, "tx_s": len(iq) / FS,
+            sig = {"freq": float(g), "snr": float(snr[i]), "occupancy": occ, "tx_s": len(iq) / rate,
                    "width": 2 * FM_HALF_BW, "voice": False, "station": True, "continuous": False,
                    "score": 0.0, "demod": "wfm", "mode": "WFM", "reason": None}
             if X is None:
                 X = np.fft.fft(iq)
-            sig["audio"] = self._wfm_audio(X, len(iq), tuned, g)
+            sig["audio"] = self._wfm_audio(X, len(iq), tuned, g, rate)
             signals.append(sig)
         keep = (freqs >= lo) & (freqs <= hi)
-        kernel = np.ones(SMOOTH_BINS) / SMOOTH_BINS
-        S = 10 * np.log10(np.apply_along_axis(lambda r: np.convolve(r, kernel, mode="same"), 1, rel[:, keep]))
+        S = 10 * np.log10(Grid.of(rate).smoothed(rel[:, keep]))
         return self._display(freqs[keep], S, np.ones(len(S), bool)), signals
 
     @staticmethod
-    def _wfm_audio(X, n, tuned, f, rate=2 * AUDIO_HALF_BW):
+    def _wfm_audio(X, n, tuned, f, fs=FS, rate=2 * AUDIO_HALF_BW):
         """Mono excerpt of the station: FM demodulation over ±100 kHz, 50 µs de-emphasis, audio at 16 kHz."""
-        df = FS / n
+        df = fs / n
         c, half = int(round((f - tuned) / df)), int(100_000 / df)
         z = np.fft.ifft(np.fft.ifftshift(X[np.arange(c - half, c + half) % n]))
         a = np.angle(z[1:] * np.conj(z[:-1]))
@@ -1358,6 +1721,7 @@ class Recording:
         self.w.setsampwidth(2)
         self.w.setframerate(self.RATE)
         self.frames = 0
+        self.channel, self.last = None, None
         self.write(np.trim_zeros(sig["audio"], "b"))
 
     def write(self, audio):
@@ -1368,15 +1732,18 @@ class Recording:
         self.w.writeframes((np.clip(audio, -1, 1) * 32767).astype("<i2").tobytes())
         self.frames += len(audio)
 
-    def feed(self, X, n, tuned, freqs, P, floor):
-        """One block: X its FFT (n samples), P its spectrum frame by frame, floor the noise of each frame."""
+    def feed(self, iq, tuned, freqs, P, floor, rate=FS):
+        """One block: iq its samples, P its spectrum frame by frame, floor the noise of each frame."""
         on = 10 * np.log10(P[:, np.abs(freqs - self.peak) <= RECORD_CHAN_HZ].mean(axis=1) / floor + 1e-12) \
             > self.threshold
         on = fill_gaps(on, int(HANG_S / FRAME_S))
-        df = FS / n
-        half = int(AUDIO_HALF_BW / df)
-        c = int(round((self.freq - tuned) / df))
-        audio = demodulate(np.fft.ifft(np.fft.ifftshift(X[np.arange(c - half, c + half) % n])), self.kind, self.RATE)
+        if self.channel is None:
+            self.channel = Channel(self.freq - tuned, rate)
+        z = self.channel.feed(iq)
+        if self.kind == "fm" and len(z):
+            # FM compares each sample with the previous one: the last one of the previous block
+            z, self.last = (np.concatenate([[self.last], z]) if self.last is not None else z), z[-1]
+        audio = demodulate(z, self.kind, self.RATE)
         step = int(FRAME_S * self.RATE)
         audio = np.resize(audio, len(on) * step) * self.gain
         for i, active in enumerate(on):
@@ -1781,7 +2148,7 @@ class Scanner(threading.Thread):
             f = sig.get("features")
             sig["params"] = {
                 "freq": round(sig["freq"]), "mode": sig["mode"], "demod": sig["demod"],
-                "window": [lo, hi], "tuned": tuned, "rate": FS, "dwell": st.dwell,
+                "window": [lo, hi], "tuned": tuned, "rate": sdr.rate, "dwell": st.dwell,
                 "threshold": st.detector.threshold, "gain": sdr.gain, "device": sdr.name, "device_id": self.dev,
                 "direct": sdr.direct, "snr": round(sig["snr"], 1), "occupancy": round(sig["occupancy"], 2),
                 "tx_s": round(sig["tx_s"], 1), "width_khz": round(sig["width"] / 1000, 1),
@@ -1827,18 +2194,19 @@ class Scanner(threading.Thread):
 
     def _listen(self, sdr, band, lo, hi, tuned, group):
         st = self.state
-        total, step = int(FS * st.dwell), int(FS * LISTEN_STEP_S)
-        blocks, got = [], 0
+        rate = sdr.rate
+        total, step = int(rate * st.dwell), int(rate * LISTEN_STEP_S)
+        cap, got = Capture(tuned, rate), 0
         while True:
             iq = sdr.read(min(step, total - got), self.stop_event)
             if iq is None:
                 return None
-            blocks.append(iq)
+            cap.add(iq)
             got += len(iq)
-            t = got / FS
+            t = got / rate
             if got < total and (band.mode == "WFM" or t < LISTEN_MIN_S - 1e-9):
                 continue             # FM radio: the whole dwell (the clip of the stations)
-            spectrum, signals = st.detector.analyze(np.concatenate(blocks), tuned, lo, hi, band)
+            spectrum, signals = st.detector.analyze(cap, tuned, lo, hi, band)
             if got >= total or band.mode != "WFM" and self.decided(signals, group, t):
                 break
         signals = [s for s in signals if not st.detector.banned(s["freq"])]    # banned: never again
@@ -1860,10 +2228,9 @@ class Scanner(threading.Thread):
         recorded is kept)."""
         st = self.state
         recs = [Recording(self.store, sig, st.detector.threshold) for sig in voices]
-        n, frame = int(FS * RECORD_CHUNK_S), int(FS * FRAME_S)
-        segs = frame // NFFT
-        win = np.hanning(NFFT).astype(np.float32)
-        freqs = tuned + (np.arange(NFFT) - NFFT // 2) * FS / NFFT
+        rate = sdr.rate
+        n = int(rate * RECORD_CHUNK_S)
+        freqs = Grid.of(rate).freqs(tuned)
         keep = (freqs >= lo) & (freqs <= hi)
         start, stopped = time.time(), False
         self.tune_event(band, lo, hi, "record")
@@ -1873,14 +2240,12 @@ class Scanner(threading.Thread):
                 if iq is None:
                     stopped = True
                     break
-                nf = len(iq) // frame
-                x = iq[:nf * frame].reshape(nf, frame)[:, :segs * NFFT].reshape(nf, segs, NFFT)
-                P = np.fft.fftshift((np.abs(np.fft.fft(x * win, axis=2)) ** 2).mean(axis=1), axes=1)
+                P = frame_spectra(iq, rate)
+                nf = len(P)
                 floor = np.median(P[:, keep], axis=1)
-                X = np.fft.fft(iq)
                 for r in recs:
                     if r.live:
-                        r.feed(X, len(iq), tuned, freqs, P, floor)
+                        r.feed(iq, tuned, freqs, P, floor, rate)
                 S = 10 * np.log10(P[:, keep] / floor[:, None] + 1e-12)
                 self.emit("on_record", band, lo, hi, Detector._display(freqs[keep], S, np.ones(nf, bool)),
                           voices, [(r.freq, r.seconds, r.silent_s, r.live) for r in recs], False)
@@ -1916,10 +2281,10 @@ class Scanner(threading.Thread):
                     tuned = wlo - DC_GAP
                     self.tune_event(h["band"], wlo, whi, "revisit")
                     sdr.tune(tuned)
-                    iq = sdr.read(int(FS * SURVEY_S), self.stop_event)
+                    iq = sdr.read(int(sdr.rate * SURVEY_S), self.stop_event)
                     if iq is None:
                         return False
-                    spectrum, cands = st.detector.survey(iq, tuned, wlo, whi)
+                    spectrum, cands = st.detector.survey(iq, tuned, wlo, whi, sdr.rate)
                     todo = [f for f, _ in cands if abs(f - b["freq"]) <= 10_000 and not st.detector.banned(f)]
                     if todo and self.listen(sdr, h["band"], wlo, whi, group=todo) is None:
                         return False
@@ -1933,13 +2298,13 @@ class Scanner(threading.Thread):
         band, lo, hi, tuned = h["band"], h["lo"], h["hi"], st.tuned(h)
         self.tune_event(band, lo, hi, "survey")
         sdr.tune(tuned)
-        iq = sdr.read(int(FS * SURVEY_S), self.stop_event)
+        iq = sdr.read(int(sdr.rate * SURVEY_S), self.stop_event)
         if iq is None:
             return False
         if band.mode == "WFM":
             # FM radio: the stations show up at the survey; a listen only if there are new ones for this
             # scan (the audio clip)
-            spectrum, found = det.analyze(iq, tuned, lo, hi, band)
+            spectrum, found = det.analyze(iq, tuned, lo, hi, band, sdr.rate)
             self.emit("on_window", band, lo, hi, spectrum, found, 0)
             with st.lock:
                 new = any(int(round(x["freq"] / 1e5)) not in st.stations for x in found)
@@ -1951,7 +2316,7 @@ class Scanner(threading.Thread):
             else:
                 self.record(sdr, band, lo, hi, tuned, found)
             return True
-        spectrum, cands = det.survey(iq, tuned, lo, hi)
+        spectrum, cands = det.survey(iq, tuned, lo, hi, sdr.rate)
         passes = h["visits"]
         todo = [f for f, _ in cands if det.whitelisted(f) or not (det.banned(f) or det.is_quiet(f, passes))]
         marks = [{"freq": f, "snr": d, "voice": False, "continuous": False, "candidate": True,
@@ -1973,12 +2338,15 @@ class Scanner(threading.Thread):
         sdr = None
         try:
             gain = self.device.get("gain")
-            sdr = RtlSdr(self.device["index"], float(gain if gain is not None else conf["SDR_GAIN"] or 40),
-                         conf["SDR_ASYNC"] != "0", self.device.get("hf"))
-            update_device_conf(self.dev, name=sdr.name, tuner=sdr.tuner)
+            sdr = open_receiver(self.device, float(gain if gain is not None else conf["SDR_GAIN"] or 40),
+                                conf["SDR_ASYNC"] != "0", self.device.get("hf"))
+            learned = {"name": sdr.name, "tuner": sdr.tuner}
+            if sdr.tuner is None:           # SoapySDR: what it tunes and its gain, for the receiver list
+                learned.update(coverage=sdr.coverage(), gain_range=list(sdr.gain_range))
+            update_device_conf(self.dev, **learned)
             st.register(self.dev, sdr.coverage())
             if not st.reachable(self.dev):
-                raise RuntimeError(T("L_SCN_DEV_NOTHING", coverage_text(sdr.tuner, sdr.hf)))
+                raise RuntimeError(T("L_SCN_DEV_NOTHING", coverage_text(sdr.tuner, sdr.hf, sdr.coverage(), sdr.name)))
             self.emit("on_start", st.scan_id, sdr.name)
             last_passes = st.passes
             while not self.stop_event.is_set():
@@ -2044,8 +2412,8 @@ def ini_set(text, section, key, value):
 
 
 def open_gqrx(freq, mode, device=None):
-    """GQRX tuned to freq (mode of the range), DSP started, on the dongle of that index (None: the one
-    GQRX already uses, else SDR_DEVICE). The dongle must be free."""
+    """GQRX tuned to freq (mode of the range), DSP started, on that receiver: a gqrx_input() string, or a
+    dongle's index (None: the one GQRX already uses, else SDR_DEVICE). The receiver must be free."""
     conf = read_conf()
     gdir = os.path.expanduser("~/.config/gqrx")
     os.makedirs(gdir, exist_ok=True)
@@ -2056,7 +2424,8 @@ def open_gqrx(freq, mode, device=None):
     label, remote_mode, low, high = GQRX_MODES.get(mode, GQRX_MODES["NFM"])
     offset = 200_000   # the channel 200 kHz from the centre, far from the DC spike
     if device is not None or "device=" not in text:
-        text = ini_set(text, "input", "device", '"rtl=%s"' % (device if device is not None else conf["SDR_DEVICE"]))
+        dev = device if device is not None else conf["SDR_DEVICE"]
+        text = ini_set(text, "input", "device", '"%s"' % (dev if "=" in str(dev) else "rtl=%s" % dev))
     for section, key, value in (("General", "crashed", "false"), ("input", "frequency", int(freq - offset)),
                                 ("receiver", "offset", offset), ("receiver", "demod", label),
                                 ("receiver", "filter_low_cut", low), ("receiver", "filter_high_cut", high),
@@ -2836,7 +3205,7 @@ def gui():
                 chip.add_css_class("chip")
                 cb = Gtk.CheckButton()
                 hf = d["hf"] if d["hf"] is not None else d["tuner"] == 6 or "Blog V3" in d["label"]
-                cov = coverage_text(d["tuner"], hf) or T("L_SCN_DEV_TUNER_UNKNOWN")
+                cov = coverage_text(d["tuner"], hf, d["coverage"], d["chip"]) or T("L_SCN_DEV_TUNER_UNKNOWN")
                 check_label(cb, "%s\n%s" % (d["label"], cov), css=["dim"] if not d["enabled"] else [],
                             max_width_chars=28)
                 cb.set_active(d["enabled"])
@@ -2867,17 +3236,22 @@ def gui():
                             margin_end=14)
             dlg = modal(self.win, T("L_SCN_DEV_DIALOG"), grid)
             dlg.set_resizable(False)
+            soapy_dev = d.get("backend") == "soapy"
             name = Gtk.Entry(text=d["label"], hexpand=True)
-            gain = Gtk.SpinButton.new_with_range(0, 50, 0.5)
+            # a SoapySDR receiver: its whole gain range (HackRF: 0 - 116 dB), learned at its first opening
+            gain = Gtk.SpinButton.new_with_range(*((d["gain_range"] or (0, 120)) if soapy_dev else (0, 50)), 0.5)
             gain.set_value(float(d["gain"] if d["gain"] is not None else CONF["SDR_GAIN"] or 40))
             hf = dropdown([T("L_SCN_DEV_HF_AUTO"), T("L_SCN_DEV_HF_YES"), T("L_SCN_DEV_HF_NO")],
                           {None: 0, True: 1, False: 2}[d["hf"]])
-            for i, (txt, w) in enumerate(((T("L_SCN_DEV_NAME"), name), (T("L_SCN_DEV_GAIN"), gain),
-                                          (T("L_SCN_DEV_HF"), hf))):
+            rows = [(T("L_SCN_DEV_NAME"), name), (T("L_SCN_DEV_GAIN"), gain)]
+            if not soapy_dev:         # direct sampling / upconverter: a dongle's matter
+                rows.append((T("L_SCN_DEV_HF"), hf))
+            for i, (txt, w) in enumerate(rows):
                 grid.attach(label(txt), 0, i, 1, 1)
                 grid.attach(w, 1, i, 1, 1)
-            grid.attach(label(T("L_SCN_DEV_HF_HINT") + "\n" + T("L_SCN_DEV_ID", d["id"], d["index"]), ["dim"],
-                              wrap=True, max_width_chars=44), 0, 3, 2, 1)
+            hint = T("L_SCN_DEV_ID_SOAPY", d["id"], d["chip"]) if soapy_dev else \
+                T("L_SCN_DEV_HF_HINT") + "\n" + T("L_SCN_DEV_ID", d["id"], d["index"])
+            grid.attach(label(hint, ["dim"], wrap=True, max_width_chars=44), 0, 3, 2, 1)
             buttons = Gtk.Box(spacing=8, halign=Gtk.Align.END)
             cancel = Gtk.Button(label=T("L_SCN_CANCEL"))
             cancel.add_css_class("plain")
@@ -2889,7 +3263,7 @@ def gui():
 
             def save(*_):
                 update_device_conf(d["id"], label=name.get_text().strip() or None, gain=gain.get_value(),
-                                   hf=[None, True, False][hf.get_selected()])
+                                   hf=None if soapy_dev else [None, True, False][hf.get_selected()])
                 self.rebuild_devices()
                 dlg.close()
             ok.connect("clicked", save)
@@ -3132,7 +3506,8 @@ def gui():
             time.sleep(0.5)
             # a dongle plugged in another port since the pause has another index: found again by its id
             plugged = {d["id"]: d for d in receivers()}
-            devs = [dict(d, index=plugged[d["id"]]["index"]) for d in self.scan_devs if d["id"] in plugged]
+            devs = [dict(d, index=plugged[d["id"]]["index"], args=plugged[d["id"]].get("args"))
+                    for d in self.scan_devs if d["id"] in plugged]
             missing = [d["label"] for d in self.scan_devs if d["id"] not in plugged]
             if not devs:
                 self.substatus.set_text(T("L_SCN_DEV_MISSING", ", ".join(missing)))
@@ -3334,7 +3709,7 @@ def gui():
             def start():
                 ok = True
                 if program == "gqrx":
-                    ok = open_gqrx(freq, mode, index)
+                    ok = open_gqrx(freq, mode, gqrx_input(dev) if dev else None)
                 elif program == "sdrpp":
                     ok = open_sdrpp(freq, mode)
                 else:
