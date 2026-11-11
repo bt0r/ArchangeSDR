@@ -1,0 +1,162 @@
+[
+ {
+  "label": "Onda media (OM)",
+  "lo_mhz": 0.5265,
+  "hi_mhz": 1.6065,
+  "mode": "AM",
+  "section": "RADIODIFUSIÓN",
+  "enabled": false
+ },
+ {
+  "label": "Radio FM (emisoras)",
+  "lo_mhz": 76.0,
+  "hi_mhz": 95.0,
+  "mode": "WFM",
+  "section": "RADIODIFUSIÓN",
+  "enabled": true
+ },
+ {
+  "label": "160 m",
+  "lo_mhz": 1.8,
+  "hi_mhz": 1.875,
+  "mode": "LSB",
+  "section": "RADIOAFICIONADOS",
+  "enabled": false
+ },
+ {
+  "label": "80 m (segmentada)",
+  "lo_mhz": 3.5,
+  "hi_mhz": 3.805,
+  "mode": "LSB",
+  "section": "RADIOAFICIONADOS",
+  "enabled": false
+ },
+ {
+  "label": "40 m",
+  "lo_mhz": 7.0,
+  "hi_mhz": 7.2,
+  "mode": "LSB",
+  "section": "RADIOAFICIONADOS",
+  "enabled": false
+ },
+ {
+  "label": "20 m",
+  "lo_mhz": 14.0,
+  "hi_mhz": 14.35,
+  "mode": "USB",
+  "section": "RADIOAFICIONADOS",
+  "enabled": false
+ },
+ {
+  "label": "15 m",
+  "lo_mhz": 21.0,
+  "hi_mhz": 21.45,
+  "mode": "USB",
+  "section": "RADIOAFICIONADOS",
+  "enabled": false
+ },
+ {
+  "label": "10 m",
+  "lo_mhz": 28.0,
+  "hi_mhz": 29.7,
+  "mode": "USB",
+  "section": "RADIOAFICIONADOS",
+  "enabled": true
+ },
+ {
+  "label": "6 m",
+  "lo_mhz": 50.0,
+  "hi_mhz": 54.0,
+  "mode": "USB",
+  "section": "RADIOAFICIONADOS",
+  "enabled": true
+ },
+ {
+  "label": "2 m BLU",
+  "lo_mhz": 144.1,
+  "hi_mhz": 144.5,
+  "mode": "USB",
+  "section": "RADIOAFICIONADOS",
+  "enabled": true
+ },
+ {
+  "label": "2 m FM (llamada 145,00)",
+  "lo_mhz": 144.5,
+  "hi_mhz": 146.0,
+  "mode": "FM",
+  "section": "RADIOAFICIONADOS",
+  "enabled": true
+ },
+ {
+  "label": "ISS (voz, SSTV)",
+  "lo_mhz": 145.7875,
+  "hi_mhz": 145.8125,
+  "mode": "NFM",
+  "section": "RADIOAFICIONADOS",
+  "enabled": true
+ },
+ {
+  "label": "70 cm (llamada 433,00)",
+  "lo_mhz": 430.0,
+  "hi_mhz": 440.0,
+  "mode": "NFM",
+  "section": "RADIOAFICIONADOS",
+  "enabled": true
+ },
+ {
+  "label": "23 cm",
+  "lo_mhz": 1260.0,
+  "hi_mhz": 1300.0,
+  "mode": "NFM",
+  "section": "RADIOAFICIONADOS",
+  "enabled": false
+ },
+ {
+  "label": "CB, 8 canales (26,968 - 27,144)",
+  "lo_mhz": 26.968,
+  "hi_mhz": 27.144,
+  "mode": "AM",
+  "section": "OCIO / VARIOS",
+  "enabled": true
+ },
+ {
+  "label": "Radio de baja potencia, símplex (tokutei)",
+  "lo_mhz": 422.05,
+  "hi_mhz": 422.3,
+  "mode": "NFM",
+  "section": "OCIO / VARIOS",
+  "enabled": true
+ },
+ {
+  "label": "Radio de baja potencia, entradas de repetidor",
+  "lo_mhz": 421.575,
+  "hi_mhz": 421.9125,
+  "mode": "NFM",
+  "section": "OCIO / VARIOS",
+  "enabled": true
+ },
+ {
+  "label": "Radio de baja potencia, salidas de repetidor",
+  "lo_mhz": 440.025,
+  "hi_mhz": 440.3625,
+  "mode": "NFM",
+  "section": "OCIO / VARIOS",
+  "enabled": true
+ },
+ {
+  "label": "Aviación civil (121,5 emergencia)",
+  "lo_mhz": 118.0,
+  "hi_mhz": 137.0,
+  "mode": "AM",
+  "section": "RECEPCIÓN LEGAL — NUNCA DIVULGAR",
+  "enabled": true
+ },
+ {
+  "label": "VHF marina (canal 16: 156,800)",
+  "lo_mhz": 156.0,
+  "hi_mhz": 162.0,
+  "mode": "NFM",
+  "section": "RECEPCIÓN LEGAL — NUNCA DIVULGAR",
+  "enabled": true
+ }
+]

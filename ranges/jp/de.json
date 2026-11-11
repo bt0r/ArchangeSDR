@@ -1,0 +1,162 @@
+[
+ {
+  "label": "Mittelwelle (MW)",
+  "lo_mhz": 0.5265,
+  "hi_mhz": 1.6065,
+  "mode": "AM",
+  "section": "RUNDFUNK",
+  "enabled": false
+ },
+ {
+  "label": "UKW-Radio (Sender)",
+  "lo_mhz": 76.0,
+  "hi_mhz": 95.0,
+  "mode": "WFM",
+  "section": "RUNDFUNK",
+  "enabled": true
+ },
+ {
+  "label": "160 m",
+  "lo_mhz": 1.8,
+  "hi_mhz": 1.875,
+  "mode": "LSB",
+  "section": "AMATEURFUNK",
+  "enabled": false
+ },
+ {
+  "label": "80 m (segmentiert)",
+  "lo_mhz": 3.5,
+  "hi_mhz": 3.805,
+  "mode": "LSB",
+  "section": "AMATEURFUNK",
+  "enabled": false
+ },
+ {
+  "label": "40 m",
+  "lo_mhz": 7.0,
+  "hi_mhz": 7.2,
+  "mode": "LSB",
+  "section": "AMATEURFUNK",
+  "enabled": false
+ },
+ {
+  "label": "20 m",
+  "lo_mhz": 14.0,
+  "hi_mhz": 14.35,
+  "mode": "USB",
+  "section": "AMATEURFUNK",
+  "enabled": false
+ },
+ {
+  "label": "15 m",
+  "lo_mhz": 21.0,
+  "hi_mhz": 21.45,
+  "mode": "USB",
+  "section": "AMATEURFUNK",
+  "enabled": false
+ },
+ {
+  "label": "10 m",
+  "lo_mhz": 28.0,
+  "hi_mhz": 29.7,
+  "mode": "USB",
+  "section": "AMATEURFUNK",
+  "enabled": true
+ },
+ {
+  "label": "6 m",
+  "lo_mhz": 50.0,
+  "hi_mhz": 54.0,
+  "mode": "USB",
+  "section": "AMATEURFUNK",
+  "enabled": true
+ },
+ {
+  "label": "2 m SSB",
+  "lo_mhz": 144.1,
+  "hi_mhz": 144.5,
+  "mode": "USB",
+  "section": "AMATEURFUNK",
+  "enabled": true
+ },
+ {
+  "label": "2 m FM (Anruf 145,00)",
+  "lo_mhz": 144.5,
+  "hi_mhz": 146.0,
+  "mode": "FM",
+  "section": "AMATEURFUNK",
+  "enabled": true
+ },
+ {
+  "label": "ISS (Sprache, SSTV)",
+  "lo_mhz": 145.7875,
+  "hi_mhz": 145.8125,
+  "mode": "NFM",
+  "section": "AMATEURFUNK",
+  "enabled": true
+ },
+ {
+  "label": "70 cm (Anruf 433,00)",
+  "lo_mhz": 430.0,
+  "hi_mhz": 440.0,
+  "mode": "NFM",
+  "section": "AMATEURFUNK",
+  "enabled": true
+ },
+ {
+  "label": "23 cm",
+  "lo_mhz": 1260.0,
+  "hi_mhz": 1300.0,
+  "mode": "NFM",
+  "section": "AMATEURFUNK",
+  "enabled": false
+ },
+ {
+  "label": "CB, 8 Kanäle (26,968 - 27,144)",
+  "lo_mhz": 26.968,
+  "hi_mhz": 27.144,
+  "mode": "AM",
+  "section": "HOBBY / SONSTIGES",
+  "enabled": true
+ },
+ {
+  "label": "Kleinleistungsfunk, Simplex (tokutei)",
+  "lo_mhz": 422.05,
+  "hi_mhz": 422.3,
+  "mode": "NFM",
+  "section": "HOBBY / SONSTIGES",
+  "enabled": true
+ },
+ {
+  "label": "Kleinleistungsfunk, Relaiseingaben",
+  "lo_mhz": 421.575,
+  "hi_mhz": 421.9125,
+  "mode": "NFM",
+  "section": "HOBBY / SONSTIGES",
+  "enabled": true
+ },
+ {
+  "label": "Kleinleistungsfunk, Relaisausgaben",
+  "lo_mhz": 440.025,
+  "hi_mhz": 440.3625,
+  "mode": "NFM",
+  "section": "HOBBY / SONSTIGES",
+  "enabled": true
+ },
+ {
+  "label": "Zivilluftfahrt (121,5 Notfall)",
+  "lo_mhz": 118.0,
+  "hi_mhz": 137.0,
+  "mode": "AM",
+  "section": "EMPFANG ERLAUBT — NIE WEITERGEBEN",
+  "enabled": true
+ },
+ {
+  "label": "Seefunk UKW (Kanal 16: 156,800)",
+  "lo_mhz": 156.0,
+  "hi_mhz": 162.0,
+  "mode": "NFM",
+  "section": "EMPFANG ERLAUBT — NIE WEITERGEBEN",
+  "enabled": true
+ }
+]

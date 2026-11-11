@@ -1,0 +1,170 @@
+[
+ {
+  "label": "Onda larga (OL)",
+  "lo_mhz": 0.1485,
+  "hi_mhz": 0.2835,
+  "mode": "AM",
+  "section": "RADIODIFUSIÓN",
+  "enabled": false
+ },
+ {
+  "label": "Onda media (OM)",
+  "lo_mhz": 0.5265,
+  "hi_mhz": 1.6065,
+  "mode": "AM",
+  "section": "RADIODIFUSIÓN",
+  "enabled": false
+ },
+ {
+  "label": "Onda corta (bandas dispersas)",
+  "lo_mhz": 3.95,
+  "hi_mhz": 26.1,
+  "mode": "AM",
+  "section": "RADIODIFUSIÓN",
+  "enabled": false
+ },
+ {
+  "label": "Radio FM (emisoras)",
+  "lo_mhz": 88.0,
+  "hi_mhz": 102.0,
+  "mode": "WFM",
+  "section": "RADIODIFUSIÓN",
+  "enabled": true
+ },
+ {
+  "label": "160 m",
+  "lo_mhz": 1.81,
+  "hi_mhz": 1.85,
+  "mode": "LSB",
+  "section": "RADIOAFICIONADOS",
+  "enabled": false
+ },
+ {
+  "label": "80 m",
+  "lo_mhz": 3.5,
+  "hi_mhz": 3.8,
+  "mode": "LSB",
+  "section": "RADIOAFICIONADOS",
+  "enabled": false
+ },
+ {
+  "label": "60 m",
+  "lo_mhz": 5.3515,
+  "hi_mhz": 5.3665,
+  "mode": "USB",
+  "section": "RADIOAFICIONADOS",
+  "enabled": false
+ },
+ {
+  "label": "40 m",
+  "lo_mhz": 7.0,
+  "hi_mhz": 7.2,
+  "mode": "LSB",
+  "section": "RADIOAFICIONADOS",
+  "enabled": false
+ },
+ {
+  "label": "20 m",
+  "lo_mhz": 14.0,
+  "hi_mhz": 14.35,
+  "mode": "USB",
+  "section": "RADIOAFICIONADOS",
+  "enabled": false
+ },
+ {
+  "label": "15 m",
+  "lo_mhz": 21.0,
+  "hi_mhz": 21.45,
+  "mode": "USB",
+  "section": "RADIOAFICIONADOS",
+  "enabled": false
+ },
+ {
+  "label": "10 m",
+  "lo_mhz": 28.0,
+  "hi_mhz": 29.7,
+  "mode": "USB",
+  "section": "RADIOAFICIONADOS",
+  "enabled": true
+ },
+ {
+  "label": "6 m",
+  "lo_mhz": 50.0,
+  "hi_mhz": 52.0,
+  "mode": "USB",
+  "section": "RADIOAFICIONADOS",
+  "enabled": true
+ },
+ {
+  "label": "2 m SSB (llamada 144,300)",
+  "lo_mhz": 144.05,
+  "hi_mhz": 144.4,
+  "mode": "USB",
+  "section": "RADIOAFICIONADOS",
+  "enabled": true
+ },
+ {
+  "label": "2 m, repetidores (145,6+)",
+  "lo_mhz": 145.2,
+  "hi_mhz": 145.8,
+  "mode": "FM",
+  "section": "RADIOAFICIONADOS",
+  "enabled": true
+ },
+ {
+  "label": "ISS (voz, SSTV)",
+  "lo_mhz": 145.7875,
+  "hi_mhz": 145.8125,
+  "mode": "NFM",
+  "section": "RADIOAFICIONADOS",
+  "enabled": true
+ },
+ {
+  "label": "70 cm (repetidores, satélites)",
+  "lo_mhz": 430.0,
+  "hi_mhz": 440.0,
+  "mode": "NFM",
+  "section": "RADIOAFICIONADOS",
+  "enabled": true
+ },
+ {
+  "label": "23 cm",
+  "lo_mhz": 1240.0,
+  "hi_mhz": 1300.0,
+  "mode": "NFM",
+  "section": "RADIOAFICIONADOS",
+  "enabled": false
+ },
+ {
+  "label": "CB, 40 can. (canal 19: 27,185)",
+  "lo_mhz": 26.965,
+  "hi_mhz": 27.405,
+  "mode": "AM",
+  "section": "OCIO / VARIOS",
+  "enabled": true
+ },
+ {
+  "label": "PMR446 (walkies, 16 canales)",
+  "lo_mhz": 446.0,
+  "hi_mhz": 446.2,
+  "mode": "NFM",
+  "section": "OCIO / VARIOS",
+  "enabled": true
+ },
+ {
+  "label": "Aviación civil (121,5 emergencia)",
+  "lo_mhz": 118.0,
+  "hi_mhz": 137.0,
+  "mode": "AM",
+  "section": "ESCUCHA TOLERADA — NO DIVULGAR NADA",
+  "enabled": true
+ },
+ {
+  "label": "VHF marina (canal 16: 156,800)",
+  "lo_mhz": 156.0,
+  "hi_mhz": 162.0,
+  "mode": "NFM",
+  "section": "ESCUCHA TOLERADA — NO DIVULGAR NADA",
+  "enabled": true
+ }
+]

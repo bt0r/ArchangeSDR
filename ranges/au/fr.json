@@ -1,0 +1,154 @@
+[
+ {
+  "label": "Ondes moyennes (PO)",
+  "lo_mhz": 0.5265,
+  "hi_mhz": 1.7015,
+  "mode": "AM",
+  "section": "RADIODIFFUSION",
+  "enabled": false
+ },
+ {
+  "label": "Radio FM (stations)",
+  "lo_mhz": 87.5,
+  "hi_mhz": 108.0,
+  "mode": "WFM",
+  "section": "RADIODIFFUSION",
+  "enabled": true
+ },
+ {
+  "label": "160 m",
+  "lo_mhz": 1.8,
+  "hi_mhz": 1.875,
+  "mode": "LSB",
+  "section": "RADIOAMATEUR",
+  "enabled": false
+ },
+ {
+  "label": "80 m",
+  "lo_mhz": 3.5,
+  "hi_mhz": 3.8,
+  "mode": "LSB",
+  "section": "RADIOAMATEUR",
+  "enabled": false
+ },
+ {
+  "label": "40 m",
+  "lo_mhz": 7.0,
+  "hi_mhz": 7.3,
+  "mode": "LSB",
+  "section": "RADIOAMATEUR",
+  "enabled": false
+ },
+ {
+  "label": "20 m",
+  "lo_mhz": 14.0,
+  "hi_mhz": 14.35,
+  "mode": "USB",
+  "section": "RADIOAMATEUR",
+  "enabled": false
+ },
+ {
+  "label": "15 m",
+  "lo_mhz": 21.0,
+  "hi_mhz": 21.45,
+  "mode": "USB",
+  "section": "RADIOAMATEUR",
+  "enabled": false
+ },
+ {
+  "label": "10 m",
+  "lo_mhz": 28.0,
+  "hi_mhz": 29.7,
+  "mode": "USB",
+  "section": "RADIOAMATEUR",
+  "enabled": true
+ },
+ {
+  "label": "6 m",
+  "lo_mhz": 50.0,
+  "hi_mhz": 54.0,
+  "mode": "USB",
+  "section": "RADIOAMATEUR",
+  "enabled": true
+ },
+ {
+  "label": "2 m BLU (appel 144,100)",
+  "lo_mhz": 144.05,
+  "hi_mhz": 144.4,
+  "mode": "USB",
+  "section": "RADIOAMATEUR",
+  "enabled": true
+ },
+ {
+  "label": "2 m FM, relais (appel 146,500)",
+  "lo_mhz": 146.0,
+  "hi_mhz": 148.0,
+  "mode": "FM",
+  "section": "RADIOAMATEUR",
+  "enabled": true
+ },
+ {
+  "label": "ISS (phonie, SSTV)",
+  "lo_mhz": 145.7875,
+  "hi_mhz": 145.8125,
+  "mode": "NFM",
+  "section": "RADIOAMATEUR",
+  "enabled": true
+ },
+ {
+  "label": "70 cm (appel 439,000)",
+  "lo_mhz": 430.0,
+  "hi_mhz": 440.0,
+  "mode": "NFM",
+  "section": "RADIOAMATEUR",
+  "enabled": true
+ },
+ {
+  "label": "23 cm",
+  "lo_mhz": 1240.0,
+  "hi_mhz": 1300.0,
+  "mode": "NFM",
+  "section": "RADIOAMATEUR",
+  "enabled": false
+ },
+ {
+  "label": "CB 27 MHz, 40 canaux (9 urgence, 11 appel)",
+  "lo_mhz": 26.965,
+  "hi_mhz": 27.405,
+  "mode": "AM",
+  "section": "LOISIRS / DIVERS",
+  "enabled": true
+ },
+ {
+  "label": "CB UHF, 80 canaux (5 / 35 urgence)",
+  "lo_mhz": 476.425,
+  "hi_mhz": 477.4125,
+  "mode": "NFM",
+  "section": "LOISIRS / DIVERS",
+  "enabled": true
+ },
+ {
+  "label": "Marine 27 MHz (appel 27,88)",
+  "lo_mhz": 27.68,
+  "hi_mhz": 27.94,
+  "mode": "AM",
+  "section": "LOISIRS / DIVERS",
+  "enabled": true
+ },
+ {
+  "label": "Aviation civile (121,5 détresse)",
+  "lo_mhz": 118.0,
+  "hi_mhz": 137.0,
+  "mode": "AM",
+  "section": "RÉCEPTION LÉGALE — NE JAMAIS DIVULGUER",
+  "enabled": true
+ },
+ {
+  "label": "VHF marine (canal 16 : 156,800)",
+  "lo_mhz": 156.0,
+  "hi_mhz": 162.0,
+  "mode": "NFM",
+  "section": "RÉCEPTION LÉGALE — NE JAMAIS DIVULGUER",
+  "enabled": true
+ }
+]

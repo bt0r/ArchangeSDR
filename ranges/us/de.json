@@ -1,0 +1,186 @@
+[
+ {
+  "label": "AM-Radio",
+  "lo_mhz": 0.53,
+  "hi_mhz": 1.7,
+  "mode": "AM",
+  "section": "RUNDFUNK",
+  "enabled": false
+ },
+ {
+  "label": "Kurzwelle (verstreute Bänder)",
+  "lo_mhz": 5.9,
+  "hi_mhz": 26.1,
+  "mode": "AM",
+  "section": "RUNDFUNK",
+  "enabled": false
+ },
+ {
+  "label": "UKW-Radio (Sender)",
+  "lo_mhz": 88.1,
+  "hi_mhz": 102.0,
+  "mode": "WFM",
+  "section": "RUNDFUNK",
+  "enabled": true
+ },
+ {
+  "label": "NOAA-Wetterfunk",
+  "lo_mhz": 162.4,
+  "hi_mhz": 162.55,
+  "mode": "NFM",
+  "section": "RUNDFUNK",
+  "enabled": false
+ },
+ {
+  "label": "160 m",
+  "lo_mhz": 1.8,
+  "hi_mhz": 2.0,
+  "mode": "LSB",
+  "section": "AMATEURFUNK",
+  "enabled": false
+ },
+ {
+  "label": "80 / 75 m",
+  "lo_mhz": 3.5,
+  "hi_mhz": 4.0,
+  "mode": "LSB",
+  "section": "AMATEURFUNK",
+  "enabled": false
+ },
+ {
+  "label": "60 m (Band + 4 Kanäle)",
+  "lo_mhz": 5.3305,
+  "hi_mhz": 5.4035,
+  "mode": "USB",
+  "section": "AMATEURFUNK",
+  "enabled": false
+ },
+ {
+  "label": "40 m",
+  "lo_mhz": 7.0,
+  "hi_mhz": 7.3,
+  "mode": "LSB",
+  "section": "AMATEURFUNK",
+  "enabled": false
+ },
+ {
+  "label": "20 m",
+  "lo_mhz": 14.0,
+  "hi_mhz": 14.35,
+  "mode": "USB",
+  "section": "AMATEURFUNK",
+  "enabled": false
+ },
+ {
+  "label": "15 m",
+  "lo_mhz": 21.0,
+  "hi_mhz": 21.45,
+  "mode": "USB",
+  "section": "AMATEURFUNK",
+  "enabled": false
+ },
+ {
+  "label": "10 m",
+  "lo_mhz": 28.0,
+  "hi_mhz": 29.7,
+  "mode": "USB",
+  "section": "AMATEURFUNK",
+  "enabled": true
+ },
+ {
+  "label": "6 m",
+  "lo_mhz": 50.0,
+  "hi_mhz": 54.0,
+  "mode": "USB",
+  "section": "AMATEURFUNK",
+  "enabled": true
+ },
+ {
+  "label": "2 m SSB (Anruf 144,200)",
+  "lo_mhz": 144.1,
+  "hi_mhz": 144.275,
+  "mode": "USB",
+  "section": "AMATEURFUNK",
+  "enabled": true
+ },
+ {
+  "label": "2 m, Relais (Anruf 146,52)",
+  "lo_mhz": 145.1,
+  "hi_mhz": 147.4,
+  "mode": "FM",
+  "section": "AMATEURFUNK",
+  "enabled": true
+ },
+ {
+  "label": "ISS (Sprache, SSTV)",
+  "lo_mhz": 145.7875,
+  "hi_mhz": 145.8125,
+  "mode": "NFM",
+  "section": "AMATEURFUNK",
+  "enabled": true
+ },
+ {
+  "label": "1,25 m",
+  "lo_mhz": 222.0,
+  "hi_mhz": 225.0,
+  "mode": "NFM",
+  "section": "AMATEURFUNK",
+  "enabled": true
+ },
+ {
+  "label": "70 cm (Anruf 446,000)",
+  "lo_mhz": 420.0,
+  "hi_mhz": 450.0,
+  "mode": "NFM",
+  "section": "AMATEURFUNK",
+  "enabled": false
+ },
+ {
+  "label": "23 cm",
+  "lo_mhz": 1240.0,
+  "hi_mhz": 1300.0,
+  "mode": "NFM",
+  "section": "AMATEURFUNK",
+  "enabled": false
+ },
+ {
+  "label": "CB (9 Notruf, 19 Trucker)",
+  "lo_mhz": 26.965,
+  "hi_mhz": 27.405,
+  "mode": "AM",
+  "section": "HOBBY / SONSTIGES",
+  "enabled": true
+ },
+ {
+  "label": "FRS / GMRS (Funkgeräte)",
+  "lo_mhz": 462.55,
+  "hi_mhz": 467.72,
+  "mode": "NFM",
+  "section": "HOBBY / SONSTIGES",
+  "enabled": true
+ },
+ {
+  "label": "MURS (5 Kanäle)",
+  "lo_mhz": 151.82,
+  "hi_mhz": 154.6,
+  "mode": "NFM",
+  "section": "HOBBY / SONSTIGES",
+  "enabled": true
+ },
+ {
+  "label": "Zivilluftfahrt (121,5 Notfall)",
+  "lo_mhz": 118.0,
+  "hi_mhz": 137.0,
+  "mode": "AM",
+  "section": "MITHÖREN ERLAUBT — NIE ENTSCHLÜSSELN",
+  "enabled": true
+ },
+ {
+  "label": "Seefunk UKW (Kanal 16: 156,800)",
+  "lo_mhz": 156.0,
+  "hi_mhz": 162.0,
+  "mode": "NFM",
+  "section": "MITHÖREN ERLAUBT — NIE ENTSCHLÜSSELN",
+  "enabled": true
+ }
+]

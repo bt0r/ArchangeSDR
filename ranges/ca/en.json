@@ -1,0 +1,178 @@
+[
+ {
+  "label": "AM radio",
+  "lo_mhz": 0.53,
+  "hi_mhz": 1.7,
+  "mode": "AM",
+  "section": "BROADCAST",
+  "enabled": false
+ },
+ {
+  "label": "Shortwave (scattered bands)",
+  "lo_mhz": 5.9,
+  "hi_mhz": 26.1,
+  "mode": "AM",
+  "section": "BROADCAST",
+  "enabled": false
+ },
+ {
+  "label": "FM radio (stations)",
+  "lo_mhz": 88.1,
+  "hi_mhz": 102.0,
+  "mode": "WFM",
+  "section": "BROADCAST",
+  "enabled": true
+ },
+ {
+  "label": "Weatheradio Canada",
+  "lo_mhz": 162.4,
+  "hi_mhz": 162.55,
+  "mode": "NFM",
+  "section": "BROADCAST",
+  "enabled": false
+ },
+ {
+  "label": "160 m",
+  "lo_mhz": 1.8,
+  "hi_mhz": 2.0,
+  "mode": "LSB",
+  "section": "AMATEUR RADIO",
+  "enabled": false
+ },
+ {
+  "label": "80 / 75 m",
+  "lo_mhz": 3.5,
+  "hi_mhz": 4.0,
+  "mode": "LSB",
+  "section": "AMATEUR RADIO",
+  "enabled": false
+ },
+ {
+  "label": "60 m (band + 4 channels)",
+  "lo_mhz": 5.3305,
+  "hi_mhz": 5.4035,
+  "mode": "USB",
+  "section": "AMATEUR RADIO",
+  "enabled": false
+ },
+ {
+  "label": "40 m",
+  "lo_mhz": 7.0,
+  "hi_mhz": 7.3,
+  "mode": "LSB",
+  "section": "AMATEUR RADIO",
+  "enabled": false
+ },
+ {
+  "label": "20 m",
+  "lo_mhz": 14.0,
+  "hi_mhz": 14.35,
+  "mode": "USB",
+  "section": "AMATEUR RADIO",
+  "enabled": false
+ },
+ {
+  "label": "15 m",
+  "lo_mhz": 21.0,
+  "hi_mhz": 21.45,
+  "mode": "USB",
+  "section": "AMATEUR RADIO",
+  "enabled": false
+ },
+ {
+  "label": "10 m",
+  "lo_mhz": 28.0,
+  "hi_mhz": 29.7,
+  "mode": "USB",
+  "section": "AMATEUR RADIO",
+  "enabled": true
+ },
+ {
+  "label": "6 m",
+  "lo_mhz": 50.0,
+  "hi_mhz": 54.0,
+  "mode": "USB",
+  "section": "AMATEUR RADIO",
+  "enabled": true
+ },
+ {
+  "label": "2 m SSB (call 144.200)",
+  "lo_mhz": 144.1,
+  "hi_mhz": 144.275,
+  "mode": "USB",
+  "section": "AMATEUR RADIO",
+  "enabled": true
+ },
+ {
+  "label": "2 m, repeaters (call 146.52)",
+  "lo_mhz": 145.1,
+  "hi_mhz": 147.4,
+  "mode": "FM",
+  "section": "AMATEUR RADIO",
+  "enabled": true
+ },
+ {
+  "label": "ISS (voice, SSTV)",
+  "lo_mhz": 145.7875,
+  "hi_mhz": 145.8125,
+  "mode": "NFM",
+  "section": "AMATEUR RADIO",
+  "enabled": true
+ },
+ {
+  "label": "1.25 m (219–220, 222–225)",
+  "lo_mhz": 219.0,
+  "hi_mhz": 225.0,
+  "mode": "NFM",
+  "section": "AMATEUR RADIO",
+  "enabled": true
+ },
+ {
+  "label": "70 cm (repeaters, satellites)",
+  "lo_mhz": 430.0,
+  "hi_mhz": 450.0,
+  "mode": "NFM",
+  "section": "AMATEUR RADIO",
+  "enabled": true
+ },
+ {
+  "label": "23 cm",
+  "lo_mhz": 1240.0,
+  "hi_mhz": 1300.0,
+  "mode": "NFM",
+  "section": "AMATEUR RADIO",
+  "enabled": false
+ },
+ {
+  "label": "CB (9 emergency, 19 truckers)",
+  "lo_mhz": 26.965,
+  "hi_mhz": 27.405,
+  "mode": "AM",
+  "section": "HOBBY / MISC",
+  "enabled": true
+ },
+ {
+  "label": "FRS (licence-free walkies)",
+  "lo_mhz": 462.55,
+  "hi_mhz": 467.72,
+  "mode": "NFM",
+  "section": "HOBBY / MISC",
+  "enabled": true
+ },
+ {
+  "label": "Civil aviation (121.5 emergency)",
+  "lo_mhz": 118.0,
+  "hi_mhz": 137.0,
+  "mode": "AM",
+  "section": "MONITORING OK — NEVER DIVULGE OR USE",
+  "enabled": true
+ },
+ {
+  "label": "Marine VHF (ch. 16: 156.800)",
+  "lo_mhz": 156.0,
+  "hi_mhz": 162.0,
+  "mode": "NFM",
+  "section": "MONITORING OK — NEVER DIVULGE OR USE",
+  "enabled": true
+ }
+]

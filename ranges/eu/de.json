@@ -1,0 +1,170 @@
+[
+ {
+  "label": "Langwelle (LW)",
+  "lo_mhz": 0.1485,
+  "hi_mhz": 0.2835,
+  "mode": "AM",
+  "section": "RUNDFUNK",
+  "enabled": false
+ },
+ {
+  "label": "Mittelwelle (MW)",
+  "lo_mhz": 0.5265,
+  "hi_mhz": 1.6065,
+  "mode": "AM",
+  "section": "RUNDFUNK",
+  "enabled": false
+ },
+ {
+  "label": "Kurzwelle (verstreute Bänder)",
+  "lo_mhz": 3.95,
+  "hi_mhz": 26.1,
+  "mode": "AM",
+  "section": "RUNDFUNK",
+  "enabled": false
+ },
+ {
+  "label": "UKW-Radio (Sender)",
+  "lo_mhz": 88.0,
+  "hi_mhz": 102.0,
+  "mode": "WFM",
+  "section": "RUNDFUNK",
+  "enabled": true
+ },
+ {
+  "label": "160 m",
+  "lo_mhz": 1.81,
+  "hi_mhz": 2.0,
+  "mode": "LSB",
+  "section": "AMATEURFUNK",
+  "enabled": false
+ },
+ {
+  "label": "80 m",
+  "lo_mhz": 3.5,
+  "hi_mhz": 3.8,
+  "mode": "LSB",
+  "section": "AMATEURFUNK",
+  "enabled": false
+ },
+ {
+  "label": "60 m",
+  "lo_mhz": 5.3515,
+  "hi_mhz": 5.3665,
+  "mode": "USB",
+  "section": "AMATEURFUNK",
+  "enabled": false
+ },
+ {
+  "label": "40 m",
+  "lo_mhz": 7.0,
+  "hi_mhz": 7.2,
+  "mode": "LSB",
+  "section": "AMATEURFUNK",
+  "enabled": false
+ },
+ {
+  "label": "20 m",
+  "lo_mhz": 14.0,
+  "hi_mhz": 14.35,
+  "mode": "USB",
+  "section": "AMATEURFUNK",
+  "enabled": false
+ },
+ {
+  "label": "15 m",
+  "lo_mhz": 21.0,
+  "hi_mhz": 21.45,
+  "mode": "USB",
+  "section": "AMATEURFUNK",
+  "enabled": false
+ },
+ {
+  "label": "10 m",
+  "lo_mhz": 28.0,
+  "hi_mhz": 29.7,
+  "mode": "USB",
+  "section": "AMATEURFUNK",
+  "enabled": true
+ },
+ {
+  "label": "6 m",
+  "lo_mhz": 50.0,
+  "hi_mhz": 52.0,
+  "mode": "USB",
+  "section": "AMATEURFUNK",
+  "enabled": true
+ },
+ {
+  "label": "2 m SSB (Anruf 144,300)",
+  "lo_mhz": 144.05,
+  "hi_mhz": 144.4,
+  "mode": "USB",
+  "section": "AMATEURFUNK",
+  "enabled": true
+ },
+ {
+  "label": "2 m, Relais (145,6+)",
+  "lo_mhz": 145.2,
+  "hi_mhz": 145.8,
+  "mode": "FM",
+  "section": "AMATEURFUNK",
+  "enabled": true
+ },
+ {
+  "label": "ISS (Sprache, SSTV)",
+  "lo_mhz": 145.7875,
+  "hi_mhz": 145.8125,
+  "mode": "NFM",
+  "section": "AMATEURFUNK",
+  "enabled": true
+ },
+ {
+  "label": "70 cm (Relais, Satelliten)",
+  "lo_mhz": 430.0,
+  "hi_mhz": 440.0,
+  "mode": "NFM",
+  "section": "AMATEURFUNK",
+  "enabled": true
+ },
+ {
+  "label": "23 cm",
+  "lo_mhz": 1240.0,
+  "hi_mhz": 1300.0,
+  "mode": "NFM",
+  "section": "AMATEURFUNK",
+  "enabled": false
+ },
+ {
+  "label": "CB, 40 Kan. (Kanal 19: 27,185)",
+  "lo_mhz": 26.965,
+  "hi_mhz": 27.405,
+  "mode": "AM",
+  "section": "HOBBY / SONSTIGES",
+  "enabled": true
+ },
+ {
+  "label": "PMR446 (Funkgeräte, 16 Kanäle)",
+  "lo_mhz": 446.0,
+  "hi_mhz": 446.2,
+  "mode": "NFM",
+  "section": "HOBBY / SONSTIGES",
+  "enabled": true
+ },
+ {
+  "label": "Zivilluftfahrt (121,5 Notfall)",
+  "lo_mhz": 118.0,
+  "hi_mhz": 137.0,
+  "mode": "AM",
+  "section": "GEDULDETES MITHÖREN — NICHTS WEITERGEBEN",
+  "enabled": true
+ },
+ {
+  "label": "Seefunk UKW (Kanal 16: 156,800)",
+  "lo_mhz": 156.0,
+  "hi_mhz": 162.0,
+  "mode": "NFM",
+  "section": "GEDULDETES MITHÖREN — NICHTS WEITERGEBEN",
+  "enabled": true
+ }
+]

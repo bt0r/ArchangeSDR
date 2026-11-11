@@ -1,0 +1,154 @@
+[
+ {
+  "label": "Mittelwelle (MW)",
+  "lo_mhz": 0.5265,
+  "hi_mhz": 1.7015,
+  "mode": "AM",
+  "section": "RUNDFUNK",
+  "enabled": false
+ },
+ {
+  "label": "UKW-Radio (Sender)",
+  "lo_mhz": 87.5,
+  "hi_mhz": 108.0,
+  "mode": "WFM",
+  "section": "RUNDFUNK",
+  "enabled": true
+ },
+ {
+  "label": "160 m",
+  "lo_mhz": 1.8,
+  "hi_mhz": 1.875,
+  "mode": "LSB",
+  "section": "AMATEURFUNK",
+  "enabled": false
+ },
+ {
+  "label": "80 m",
+  "lo_mhz": 3.5,
+  "hi_mhz": 3.8,
+  "mode": "LSB",
+  "section": "AMATEURFUNK",
+  "enabled": false
+ },
+ {
+  "label": "40 m",
+  "lo_mhz": 7.0,
+  "hi_mhz": 7.3,
+  "mode": "LSB",
+  "section": "AMATEURFUNK",
+  "enabled": false
+ },
+ {
+  "label": "20 m",
+  "lo_mhz": 14.0,
+  "hi_mhz": 14.35,
+  "mode": "USB",
+  "section": "AMATEURFUNK",
+  "enabled": false
+ },
+ {
+  "label": "15 m",
+  "lo_mhz": 21.0,
+  "hi_mhz": 21.45,
+  "mode": "USB",
+  "section": "AMATEURFUNK",
+  "enabled": false
+ },
+ {
+  "label": "10 m",
+  "lo_mhz": 28.0,
+  "hi_mhz": 29.7,
+  "mode": "USB",
+  "section": "AMATEURFUNK",
+  "enabled": true
+ },
+ {
+  "label": "6 m",
+  "lo_mhz": 50.0,
+  "hi_mhz": 54.0,
+  "mode": "USB",
+  "section": "AMATEURFUNK",
+  "enabled": true
+ },
+ {
+  "label": "2 m SSB (Anruf 144,100)",
+  "lo_mhz": 144.05,
+  "hi_mhz": 144.4,
+  "mode": "USB",
+  "section": "AMATEURFUNK",
+  "enabled": true
+ },
+ {
+  "label": "2 m FM, Relais (Anruf 146,500)",
+  "lo_mhz": 146.0,
+  "hi_mhz": 148.0,
+  "mode": "FM",
+  "section": "AMATEURFUNK",
+  "enabled": true
+ },
+ {
+  "label": "ISS (Sprache, SSTV)",
+  "lo_mhz": 145.7875,
+  "hi_mhz": 145.8125,
+  "mode": "NFM",
+  "section": "AMATEURFUNK",
+  "enabled": true
+ },
+ {
+  "label": "70 cm (Anruf 439,000)",
+  "lo_mhz": 430.0,
+  "hi_mhz": 440.0,
+  "mode": "NFM",
+  "section": "AMATEURFUNK",
+  "enabled": true
+ },
+ {
+  "label": "23 cm",
+  "lo_mhz": 1240.0,
+  "hi_mhz": 1300.0,
+  "mode": "NFM",
+  "section": "AMATEURFUNK",
+  "enabled": false
+ },
+ {
+  "label": "CB 27 MHz, 40 Kanäle (9 Notruf, 11 Anruf)",
+  "lo_mhz": 26.965,
+  "hi_mhz": 27.405,
+  "mode": "AM",
+  "section": "HOBBY / SONSTIGES",
+  "enabled": true
+ },
+ {
+  "label": "UHF-CB, 80 Kanäle (5 / 35 Notruf)",
+  "lo_mhz": 476.425,
+  "hi_mhz": 477.4125,
+  "mode": "NFM",
+  "section": "HOBBY / SONSTIGES",
+  "enabled": true
+ },
+ {
+  "label": "Seefunk 27 MHz (Anruf 27,88)",
+  "lo_mhz": 27.68,
+  "hi_mhz": 27.94,
+  "mode": "AM",
+  "section": "HOBBY / SONSTIGES",
+  "enabled": true
+ },
+ {
+  "label": "Zivilluftfahrt (121,5 Notfall)",
+  "lo_mhz": 118.0,
+  "hi_mhz": 137.0,
+  "mode": "AM",
+  "section": "EMPFANG ERLAUBT — NIE WEITERGEBEN",
+  "enabled": true
+ },
+ {
+  "label": "Seefunk UKW (Kanal 16: 156,800)",
+  "lo_mhz": 156.0,
+  "hi_mhz": 162.0,
+  "mode": "NFM",
+  "section": "EMPFANG ERLAUBT — NIE WEITERGEBEN",
+  "enabled": true
+ }
+]
