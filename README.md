@@ -60,7 +60,7 @@ Ubuntu 22.04, Fedora 36, openSUSE Leap 15.4 or newer.
 |---|---|---|
 | Listening to the recordings | `pw-play` (PipeWire), else `paplay` or `aplay` | usually already there |
 | Join a frequency | **one of** GQRX, SDR++, rtl_fm (with `aplay`), or your own command | `gqrx` (`gqrx-sdr` on Debian / Ubuntu); SDR++ from its [releases](https://github.com/AlexandreRouma/SDRPlusPlus/releases) or the AUR; rtl_fm comes with `rtl-sdr` |
-| Transcription | whisper.cpp (`whisper-cli`), free and local, **or** an OpenAI-compatible API (a local server, OpenAI, Scaleway, Mistral, Groq…) | `whisper-cpp` on Arch and Fedora; to build elsewhere. The model is installed from the Settings tab |
+| Transcription | whisper.cpp (`whisper-cli`), free and local, **or** an OpenAI-compatible API (a local server, OpenAI, Scaleway, Mistral, Groq…) | see [Transcription with whisper.cpp](#transcription-with-whispercpp) |
 | Push notifications | the free [ntfy](https://ntfy.sh) app on your phone, subscribed to a topic (ntfy.sh or your own server) | nothing on the computer |
 | Desktop notifications | `notify-send` and a notification daemon | `libnotify` (`libnotify-bin` on Debian / Ubuntu) |
 
@@ -86,6 +86,33 @@ echo 'blacklist dvb_usb_rtl28xxu' | sudo tee /etc/modprobe.d/blacklist-rtl.conf 
 
 Then unplug and replug the dongle. "Permission denied" means the `rtl-sdr` udev rules are missing: add
 your user to the group they use (`plugdev` on Debian).
+
+## Transcription with whisper.cpp
+
+Transcription is optional, but it is what makes the log searchable. The free, local engine is
+`whisper-cli` from [whisper.cpp](https://github.com/ggml-org/whisper.cpp): nothing leaves your
+computer.
+
+| Distribution | Install |
+|---|---|
+| Arch, EndeavourOS, Manjaro | `sudo pacman -S whisper-cpp` |
+| Fedora | `sudo dnf install whisper-cpp` |
+| Debian testing / unstable, Ubuntu 26.04 or newer | `sudo apt install whisper.cpp-tools` |
+| Debian 12 / 13, Raspberry Pi OS (uConsole), older Ubuntu, others | build it (below) |
+
+Building takes a few minutes on a PC, longer on a Raspberry Pi CM4:
+
+```bash
+sudo apt install build-essential cmake git      # or your distribution's compiler, cmake and git
+git clone https://github.com/ggml-org/whisper.cpp
+cd whisper.cpp
+cmake -B build && cmake --build build -j --config Release
+install -m 755 build/bin/whisper-cli ~/.local/bin/
+```
+
+Then, in **Settings → Transcription**: pick *whisper-cli*, choose a model and click **Install**.
+`base` (60 MB) suits a uConsole, `large-v3-turbo` (574 MB) a recent PC. ArchangeSDR finds
+`whisper-cli` in your `PATH`; another location goes in the *Program* field.
 
 ## Usage
 
@@ -135,6 +162,9 @@ ArchangeSDR runs on its own, and fits in two setups by the same author, whose fi
 | `standalone` | `~/.config/archangesdr/` | `~/.local/share/archangesdr/` |
 | `archsdr` | `~/.config/radio-menu/` | `~/.local/share/radio-menu/` |
 | `ubonsole` | `~/.config/i3/` | `~/.local/share/ubonsole/` |
+
+Under archSDR, the language and region are the menu's: `RADIO_LANG` and `RADIO_REGION` in
+`~/.config/radio-menu/radio.conf`, else the system locale (the Settings tab still overrides them).
 
 The project was called SDRScanner: `sdrscanner` stays a command for it, and an old standalone history
 moves to the new folders at the first start.

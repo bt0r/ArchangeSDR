@@ -59,6 +59,20 @@ if [ ${#missing[@]} -gt 0 ]; then
   deps_hint
 fi
 command -v gqrx >/dev/null || echo "Optional: GQRX, for \"Join\" (open a frequency)."
+# whisper-cli: the free, local transcription (packaged on Arch, Fedora, Debian testing, Ubuntu 26.04+)
+if ! command -v whisper-cli >/dev/null; then
+  ids=""
+  [ -r /etc/os-release ] && ids="$(. /etc/os-release; echo "$ID $ID_LIKE")"
+  case " $ids " in
+    *" arch "*) how="sudo pacman -S whisper-cpp" ;;
+    *" fedora "*) how="sudo dnf install whisper-cpp" ;;
+    *" debian "*|*" ubuntu "*)
+      if apt-cache show whisper.cpp-tools >/dev/null 2>&1; then how="sudo apt install whisper.cpp-tools"
+      else how="build it: see \"Transcription with whisper.cpp\" in README.md"; fi ;;
+    *) how="see \"Transcription with whisper.cpp\" in README.md" ;;
+  esac
+  echo "Optional: whisper-cli, to transcribe the recordings ($how)."
+fi
 command -v pw-play >/dev/null || command -v paplay >/dev/null || command -v aplay >/dev/null ||
   echo "Optional: pw-play (PipeWire), paplay or aplay, to play the captures and recordings."
 case ":$PATH:" in *":$HOME/.local/bin:"*) ;; *) echo "Add ~/.local/bin to your PATH." ;; esac
