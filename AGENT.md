@@ -253,6 +253,13 @@ tools/screenshots.py          # → docs/screenshots/*.png (about 30 s)
 
 - English everywhere in the repository (code, comments, docs, commit messages); the UI is translated
   through `lang/`.
+- **The README follows the code, in the same commit.** It is the user documentation: a change of what
+  the user sees or needs (a feature, an option, a command or `--cli` flag, a setting, a dependency or
+  supported hardware, a requirement, a region, the install or update steps) updates the README where it
+  speaks of it (Features, Requirements, Install, Usage, Regions...), and the screenshots when the window
+  changes (see Screenshots). Before committing, search the README for what the change makes wrong (e.g.
+  "dongle" when any receiver is meant). Internal changes with no visible effect leave it as is; their
+  why goes here, in AGENT.md.
 - Comments say why, in the style already there; constants with a unit and a reason at the top of the
   file.
 - `install.sh` installs per user (`~/.local/share/archangesdr/app`, `~/.local/bin/archangesdr`), no
