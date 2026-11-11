@@ -52,7 +52,8 @@ that, which keeps it fast on a small ARM board.
 | GTK 4 for Python | `python-gobject` `gtk4` | `python3-gi` `gir1.2-gtk-4.0` | `python3-gobject` `gtk4` | `python3-gobject` `typelib-1_0-Gtk-4_0` |
 | librtlsdr | `rtl-sdr` | `rtl-sdr` | `rtl-sdr` | `rtl-sdr` |
 
-Plus an RTL-SDR dongle (any model: Blog V3 / V4, Nooelec, generic R820T…). GTK 4 means Debian 12,
+Plus a receiver: an RTL-SDR dongle (any model: Blog V3 / V4, Nooelec, generic R820T…), or, with
+SoapySDR (see below), a HackRF, Airspy, SDRplay, LimeSDR, PlutoSDR… GTK 4 means Debian 12,
 Ubuntu 22.04, Fedora 36, openSUSE Leap 15.4 or newer.
 
 **Optional**, only for the feature next to it:
@@ -122,12 +123,13 @@ Then, in **Settings → Transcription**: pick *whisper-cli*, choose a model and 
 archangesdr                              # the window
 archangesdr --cli 144-146 --passes 3     # the same detection in a terminal: every signal and why
 archangesdr --cli 144-148 --device 0,1   # with two dongles (USB index or serial number)
+archangesdr --cli 144-148 --device hackrf:1234   # a SoapySDR receiver (its id: driver:serial)
 archangesdr --bands                      # the configured ranges
 ```
 
-In the window: tick your dongles and your ranges, then **Scan**. Everything else (language, region,
+In the window: tick your receivers and your ranges, then **Scan**. Everything else (language, region,
 theme, Join program, notifications, transcription) is in the **Settings** tab. `SIGUSR1` pauses the scan
-and frees the dongles, for a launcher that needs them: `pkill -USR1 -f /archangesdr`.
+and frees the receivers, for a launcher that needs them: `pkill -USR1 -f /archangesdr`.
 
 A few settings live in a plain `KEY=value` file (`~/.config/archangesdr/archangesdr.conf` for the
 standalone profile): `SDR_DEVICE` (the dongle ticked at the first start), `SDR_GAIN` (dB, 40 by default;
