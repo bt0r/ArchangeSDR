@@ -1,0 +1,179 @@
+{
+ "am_speech": {
+  "candidates": [
+   [
+    301172,
+    30.1
+   ]
+  ],
+  "signals": [
+   {
+    "demod": "am",
+    "offset": 300000,
+    "score": 1.41,
+    "snr": 30.2,
+    "voice": true,
+    "width": 8203
+   }
+  ]
+ },
+ "burst": {
+  "candidates": [],
+  "signals": []
+ },
+ "carrier": {
+  "candidates": [
+   [
+    301172,
+    29.2
+   ]
+  ],
+  "signals": [
+   {
+    "demod": "fm",
+    "offset": 300001,
+    "score": 0.0,
+    "snr": 29.2,
+    "voice": false,
+    "width": 8203
+   }
+  ]
+ },
+ "lsb_speech": {
+  "candidates": [
+   [
+    297656,
+    10.3
+   ]
+  ],
+  "signals": [
+   {
+    "demod": "ssb",
+    "offset": 300295,
+    "score": 1.91,
+    "snr": 19.3,
+    "voice": true,
+    "width": 9375
+   }
+  ]
+ },
+ "nfm_music": {
+  "candidates": [
+   [
+    300000,
+    29.0
+   ]
+  ],
+  "signals": [
+   {
+    "demod": "fm",
+    "offset": 299914,
+    "score": 0.05,
+    "snr": 29.1,
+    "voice": false,
+    "width": 9375
+   }
+  ]
+ },
+ "nfm_speech": {
+  "candidates": [
+   [
+    300000,
+    29.2
+   ]
+  ],
+  "signals": [
+   {
+    "demod": "fm",
+    "offset": 299999,
+    "score": 1.91,
+    "snr": 29.2,
+    "voice": true,
+    "width": 8203
+   }
+  ]
+ },
+ "nfm_speech_moderate": {
+  "candidates": [
+   [
+    300000,
+    21.3
+   ]
+  ],
+  "signals": [
+   {
+    "demod": "fm",
+    "offset": 299982,
+    "score": 1.5,
+    "snr": 21.3,
+    "voice": true,
+    "width": 8203
+   }
+  ]
+ },
+ "noise": {
+  "candidates": [],
+  "signals": []
+ },
+ "two_speakers": {
+  "candidates": [
+   [
+    300000,
+    29.2
+   ],
+   [
+    699609,
+    24.7
+   ]
+  ],
+  "signals": [
+   {
+    "demod": "fm",
+    "offset": 299998,
+    "score": 1.44,
+    "snr": 29.2,
+    "voice": true,
+    "width": 8203
+   },
+   {
+    "demod": "fm",
+    "offset": 700028,
+    "score": 2.04,
+    "snr": 24.7,
+    "voice": true,
+    "width": 7031
+   }
+  ]
+ },
+ "usb_speech": {
+  "candidates": [
+   [
+    302344,
+    14.5
+   ]
+  ],
+  "signals": [
+   {
+    "demod": "ssb",
+    "offset": 299615,
+    "score": 1.6,
+    "snr": 19.6,
+    "voice": true,
+    "width": 8203
+   }
+  ]
+ },
+ "wide": {
+  "candidates": [],
+  "signals": [
+   {
+    "demod": "",
+    "offset": 499745,
+    "score": 0.0,
+    "snr": 17.6,
+    "voice": false,
+    "width": 105469
+   }
+  ]
+ }
+}
