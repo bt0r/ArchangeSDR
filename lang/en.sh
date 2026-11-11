@@ -1,6 +1,8 @@
 # ArchangeSDR UI strings — English. Bash syntax: L_KEY='value', a literal quote is '\''
 L_SCN_ZERO_PLURAL='1'
 L_SCN_TITLE='ArchangeSDR'
+# archSDR's radio menu entry and Waybar tooltip
+L_SCN_MENU_ENTRY='ArchangeSDR - Radio Scanner'
 L_SCN_NOTIFY_APP='Radio'
 L_SCN_USAGE='Usage: archangesdr [--profile archsdr|ubonsole|standalone] [--cli <lo>-<hi> (MHz) [--device <index|serial>,...] [--passes N] | --bands]'
 L_SCN_MY_RANGES='My ranges'

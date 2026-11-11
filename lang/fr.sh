@@ -1,6 +1,7 @@
 # ArchangeSDR UI strings — French. Bash syntax: L_KEY='value', a literal quote is '\''
 L_SCN_ZERO_PLURAL='0'
 L_SCN_TITLE='ArchangeSDR'
+L_SCN_MENU_ENTRY='ArchangeSDR - Scanner radio'
 L_SCN_NOTIFY_APP='Radio'
 L_SCN_USAGE='Usage : archangesdr [--profile archsdr|ubonsole|standalone] [--cli <début>-<fin> (MHz) [--device <index|série>,...] [--passes N] | --bands]'
 L_SCN_MY_RANGES='Mes plages'

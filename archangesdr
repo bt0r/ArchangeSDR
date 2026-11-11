@@ -17,9 +17,9 @@ Profiles (--profile, ARCHANGESDR_PROFILE, else detected) keep the files of the d
     standalone  ~/.config/archangesdr/archangesdr.conf, ranges ~/.config/archangesdr/ranges.json,
                 data ~/.local/share/archangesdr
 Settings in that file (bash KEY=value): SDR_DEVICE (index or serial), SDR_GAIN (dB), the language
-(UBONSOLE_LANG or SCANNER_LANG: en, fr, de, es), the region (UBONSOLE_REGION or SCANNER_REGION: a folder
-of ranges/: eu, fr, uk, de, es, us, ca, br, ar, cl, co, sa, jp, cn, ru, au) and, under Hyprland, RADIO_WS
-(workspace GQRX opens on).
+(UBONSOLE_LANG, RADIO_LANG or SCANNER_LANG: en, fr, de, es), the region (UBONSOLE_REGION, RADIO_REGION
+or SCANNER_REGION: a folder of ranges/: eu, fr, uk, de, es, us, ca, br, ar, cl, co, sa, jp, cn, ru, au)
+and, under Hyprland, RADIO_WS (workspace GQRX opens on).
 
 Ranges are editable in the app; the first start copies the defaults of the region and language (the
 voice ranges of the region's frequency sheet, AM, NFM, FM, USB, LSB, and FM radio; never the "do not
@@ -72,6 +72,17 @@ def _locale_lang():
     return lang if lang in LANGS else "en"
 
 
+def _locale_region():
+    """The region of the system locale (fr_FR -> fr, en_GB -> uk, es_PE -> sa), else Europe. archSDR's
+    radio-menu (common.sh) maps it the same way, so the menu and the scanner agree."""
+    cc = re.sub(r"^[a-z]+_([A-Za-z]{2}).*$", r"\1", os.environ.get("LANG") or "").lower()
+    if cc == "gb":
+        return "uk"
+    if cc in ("bo", "ec", "pe", "py", "uy", "ve"):
+        return "sa"
+    return cc if cc in ("ar", "au", "br", "ca", "cl", "cn", "co", "de", "es", "fr", "jp", "ru", "us") else "eu"
+
+
 # Where each desktop keeps its files; the scanner reuses them so its history and ranges stay in place
 PROFILES = {
     "ubonsole": dict(conf=os.path.join(_CONFIG, "i3", "ubonsole.conf"),
@@ -84,7 +95,8 @@ PROFILES = {
                      accent=(os.path.join(_CONFIG, "i3", "scripts", "rofi-theme.rasi"),
                              r"accent:\s*#([0-9a-fA-F]{6})", "E09AB4")),
     "archsdr": dict(conf=os.path.join(_CONFIG, "radio-menu", "radio.conf"),
-                    lang_key="SCANNER_LANG", region_key="SCANNER_REGION", lang="fr", region="fr", ws="8",
+                    lang_key="RADIO_LANG", region_key="RADIO_REGION", lang=_locale_lang(), region=_locale_region(),
+                    ws="8",
                     ranges=os.path.join(_CONFIG, "radio-menu", "scanner-ranges.json"),
                     devices=os.path.join(_CONFIG, "radio-menu", "scanner-devices.json"),
                     settings=os.path.join(_CONFIG, "radio-menu", "scanner-settings.json"),
