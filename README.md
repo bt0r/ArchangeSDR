@@ -129,7 +129,8 @@ archangesdr --bands                      # the configured ranges
 ```
 
 In the window: tick your receivers and your ranges, then **Scan**. Everything else (language, region,
-theme, Join program, notifications, transcription) is in the **Settings** tab. `SIGUSR1` pauses the scan
+theme, Join program, notifications, transcription) is in the **Settings** tab. On a short screen, the
+arrow under the scan cards folds their spectra away (the choice is kept). `SIGUSR1` pauses the scan
 and frees the receivers, for a launcher that needs them: `pkill -USR1 -f /archangesdr`.
 
 A few settings live in a plain `KEY=value` file (`~/.config/archangesdr/archangesdr.conf` for the

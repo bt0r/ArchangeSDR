@@ -58,6 +58,16 @@ detection, in en / fr / de / es. It ships standalone and inside two desktops by 
   Stop bar pinned below), so the window's minimum height stays ~100 px; GTK prints "Trying to measure
   GtkApplicationWindow for height of N, but it needs at least M" at every frame otherwise. A new
   fixed-height widget goes inside a scrolled column. Check: `win.measure(Gtk.Orientation.VERTICAL, -1)[0]`.
+  The other way round, a widget whose height comes from `vexpand` alone gets its *minimum* in that
+  scrolled column on a short screen: give it a `content_height` (the statistics chart, `STATS_H`; a
+  `ScrolledWindow` with `vscrollbar_policy=NEVER` ignores `min_content_height`). The spectra fold away
+  (`show_graphs`, the arrow under the cards, `settings["graphs_hidden"]`).
+- **Lists are updated row by row** (`App.sync`: key, signature, builder): only new or changed rows are
+  built. Rebuilding the whole journal took ~0.15 s here, seconds on a CM4, at every hit, every 15 s and
+  every click on Play; it destroyed the button under the pointer (lost clicks) and GTK moved the focus
+  to the first row, scrolling the list back to the top. A rebuilt row that had the focus hands it to its
+  replacement. The Play buttons follow the player in place (`update_play_buttons`), never through a
+  rebuild.
 
 ## How the scan works
 
