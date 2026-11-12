@@ -59,6 +59,8 @@ if [ ${#missing[@]} -gt 0 ]; then
   deps_hint
 fi
 command -v gqrx >/dev/null || echo "Optional: GQRX, for \"Join\" (open a frequency)."
+command -v lame >/dev/null || command -v ffmpeg >/dev/null ||
+  echo "Optional: lame or ffmpeg, to attach the recordings to ntfy notifications in MP3."
 python3 -c 'import SoapySDR' 2>/dev/null ||
   echo "Optional: SoapySDR's Python module, for receivers other than RTL-SDR (HackRF, Airspy, SDRplay...)."
 # whisper-cli: the free, local transcription (packaged on Arch, Fedora, Debian testing, Ubuntu 26.04+)

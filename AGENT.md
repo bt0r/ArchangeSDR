@@ -46,7 +46,7 @@ detection, in en / fr / de / es. It ships standalone and inside two desktops by 
   Raspberry Pi 4 (CM4); keep the processing per block. Check: `tools/bench.py` (above 100 % "real
   time", the machine cannot keep up with the dongle).
 - **External programs are optional and probed** (`launch`, `run_quiet`, `FileNotFoundError` caught):
-  pw-play / paplay / aplay, notify-send, gqrx, xdg-open, pkill / pgrep, hyprctl. A missing one must
+  pw-play / paplay / aplay, notify-send, gqrx, xdg-open, pkill / pgrep, hyprctl, lame / ffmpeg. A missing one must
   never crash the app.
 - **Python 3.8 syntax** (`:=` is used, nothing newer: no `match`, no `X | Y` types, no `list[int]` at
   runtime). Check: `python3 -c "import ast; ast.parse(open('archangesdr').read(), feature_version=(3, 8))"`.
@@ -180,8 +180,14 @@ because the strings and `CONF` are read at import.
   `sh -c` in their own process group; `stop_joined` kills that group when the scan resumes.
 - ntfy: `notify_recording` runs in a thread when a `Recording` closes; `ntfy_wanted` applies the
   conditions; `ntfy_send` POSTs the message (title and tags as query parameters, UTF-8 safe) or PUTs the
-  WAV with `filename`/`message` parameters; the token goes in `Authorization: Bearer`, never in the URL.
-  Settings in `settings["ntfy"]`.
+  attachment with `filename`/`message` parameters; the token goes in `Authorization: Bearer`, never in the
+  URL. Settings in `settings["ntfy"]`. In the Settings tab the topic, token, conditions and attachment show only once
+  "Send each new recording" is ticked: filled in under an unticked box, they looked like a working setup.
+- ntfy attachments (`ntfy_attachment`): the recording encoded to MP3 (`to_mp3`: lame, else ffmpeg, at
+  `MP3_KBPS` = 32 kbit/s mono, ~1/8 of the WAV) if under `NTFY_MAX_ATTACH` = 2 MB (ntfy.sh's free plan;
+  15 MB was its paid / self-hosted figure), else the 2.5 s preview, with a note in the message. Without
+  an encoder the WAV goes (about a minute fits). The MP3 is a temporary file: the stored files stay WAV
+  (playback, whisper-cli and the appended recordings need it).
 
 ## Files and profiles
 

@@ -64,7 +64,7 @@ Ubuntu 22.04, Fedora 36, openSUSE Leap 15.4 or newer.
 | Listening to the recordings | `pw-play` (PipeWire), else `paplay` or `aplay` | usually already there |
 | Join a frequency | **one of** GQRX, SDR++, rtl_fm (with `aplay`), or your own command | `gqrx` (`gqrx-sdr` on Debian / Ubuntu); SDR++ from its [releases](https://github.com/AlexandreRouma/SDRPlusPlus/releases) or the AUR; rtl_fm comes with `rtl-sdr` |
 | Transcription | whisper.cpp (`whisper-cli`), free and local, **or** an OpenAI-compatible API (a local server, OpenAI, Scaleway, Mistral, Groq…) | see [Transcription with whisper.cpp](#transcription-with-whispercpp) |
-| Push notifications | the free [ntfy](https://ntfy.sh) app on your phone, subscribed to a topic (ntfy.sh or your own server) | nothing on the computer |
+| Push notifications | the free [ntfy](https://ntfy.sh) app on your phone, subscribed to a topic (ntfy.sh or your own server); recordings are attached in MP3 when they are under 2 MB (ntfy.sh's free plan), else their 2.5 s preview | `lame` or `ffmpeg` for the MP3 (without them, the WAV: about a minute fits) |
 | Desktop notifications | `notify-send` and a notification daemon | `libnotify` (`libnotify-bin` on Debian / Ubuntu) |
 | Receivers other than RTL-SDR (HackRF, Airspy, SDRplay, LimeSDR, PlutoSDR…) | SoapySDR's Python module and the receiver's SoapySDR module; the receiver must sample at 2.4 MS/s or more (the Airspy HF+ cannot) | Arch: `soapysdr` plus `soapyhackrf`, `soapyairspy`…; Debian / Ubuntu: `python3-soapysdr` plus `soapysdr-module-hackrf`, `soapysdr-module-airspy`… (or `soapysdr-module-all`); elsewhere the SoapySDR Python bindings and the module of the receiver |
 

@@ -54,6 +54,7 @@ import socket
 import sqlite3
 import subprocess
 import sys
+import tempfile
 import threading
 import types
 import time
@@ -2559,7 +2560,8 @@ def open_sdrpp(freq, mode):
 
 # --- Push notifications (ntfy) -------------------------------------------------------------------
 
-NTFY_MAX_ATTACH = 15_000_000     # ntfy.sh's attachment limit
+NTFY_MAX_ATTACH = 2_000_000      # bytes: ntfy.sh's attachment limit on its free plan
+MP3_KBPS = 32                    # kbit/s for the attachments: clear speech at 16 kHz mono, ~8 min in 2 MB
 
 
 def ntfy_conf():
@@ -2600,7 +2602,8 @@ def ntfy_send(conf, title, message, attach=None):
     params = {"title": title, "tags": "radio"}
     if attach:
         params.update(message=message, filename=os.path.basename(attach))
-        data, method = open(attach, "rb").read(), "PUT"
+        with open(attach, "rb") as f:
+            data, method = f.read(), "PUT"
     else:
         data, method = message.encode("utf-8"), "POST"
     req = urllib.request.Request(url + ("&" if "?" in url else "?") + urllib.parse.urlencode(params), data=data,
@@ -2616,6 +2619,33 @@ def ntfy_send(conf, title, message, attach=None):
         raise RuntimeError(T("L_SCN_TR_ERR_NET", getattr(e, "reason", e)))
 
 
+def to_mp3(wav, out):
+    """wav encoded to MP3 at out (lame, else ffmpeg; both optional); out, or None without an encoder."""
+    for cmd in (["lame", "--quiet", "-m", "m", "-b", str(MP3_KBPS), wav, out],
+                ["ffmpeg", "-nostdin", "-loglevel", "error", "-y", "-i", wav, "-ac", "1", "-codec:a", "libmp3lame",
+                 "-b:a", "%dk" % MP3_KBPS, out]):
+        try:
+            if subprocess.run(cmd, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
+                              timeout=300).returncode == 0 and os.path.getsize(out) > 0:
+                return out
+        except (OSError, subprocess.SubprocessError):
+            continue
+    return None
+
+
+def ntfy_attachment(recording, preview, tmp, name):
+    """(file, is_preview) to attach: the whole recording if it fits in NTFY_MAX_ATTACH, else its preview;
+    in MP3 when an encoder is there (a fifth of the WAV's size), else the WAV. (None, False) if none fits."""
+    for path, is_preview in ((recording, False), (preview, True)):
+        if not path or not os.path.exists(path):
+            continue
+        mp3 = to_mp3(path, os.path.join(tmp, "%s%s.mp3" % (name, "-preview" if is_preview else "")))
+        f = mp3 or path
+        if os.path.getsize(f) < NTFY_MAX_ATTACH:
+            return f, is_preview
+    return None, False
+
+
 NTFY_LAST = {}    # the last sending: {"time", "error"} (shown in the settings)
 
 
@@ -2624,23 +2654,27 @@ def notify_recording(store, did):
     conf = ntfy_conf()
     if not conf.get("enabled") or not conf.get("url"):
         return
-    rows = store.q("SELECT freq, mode, label, score, snr, rec_s, recording, device FROM detections WHERE id = ?",
-                   (did,))
+    rows = store.q("SELECT freq, mode, label, score, snr, rec_s, recording, audio, device FROM detections "
+                   "WHERE id = ?", (did,))
     if not rows:
         return
-    freq, mode, lbl, score, snr, rec_s, recording, device = rows[0]
+    freq, mode, lbl, score, snr, rec_s, recording, preview, device = rows[0]
     if not ntfy_wanted(conf, freq, score):
         return
     dev = load_device_conf().get(device or "", {})
     message = T("L_SCN_NTFY_MSG", fmt_secs(rec_s or 0), score or 0, snr or 0, mode,
                 dev.get("label") or dev.get("name") or device or "RTL-SDR", fmt_time(time.time(), CLOCK_FMT))
-    attach = recording if conf.get("attach") and recording and os.path.exists(recording) and \
-        os.path.getsize(recording) <= NTFY_MAX_ATTACH else None
+    tmp = tempfile.mkdtemp(prefix="archangesdr-ntfy-")
     try:
+        attach, is_preview = ntfy_attachment(recording, preview, tmp, did) if conf.get("attach") else (None, False)
+        if is_preview:
+            message += "\n" + T("L_SCN_NTFY_PREVIEW", NTFY_MAX_ATTACH // 1_000_000)
         ntfy_send(conf, "%s · %s" % (fmt_mhz(freq), lbl or mode), message, attach)
         NTFY_LAST.update(time=time.time(), error=None)
     except (RuntimeError, OSError) as e:
         NTFY_LAST.update(time=time.time(), error=str(e))
+    finally:
+        shutil.rmtree(tmp, ignore_errors=True)
 
 
 # --- Terminal mode -------------------------------------------------------------------------------
@@ -4569,8 +4603,8 @@ def gui():
                 nc.update(fields)
                 save_settings(self.settings)
             n_on = Gtk.CheckButton(label=T("L_SCN_SET_NTFY_ON"), active=bool(nc.get("enabled")))
-            n_on.connect("toggled", lambda w: save_ntfy(enabled=w.get_active()))
             line("", n_on)
+            before = set(children(grid))
             n_url = Gtk.Entry(text=nc.get("url") or "", hexpand=True,
                               placeholder_text="https://ntfy.sh/" + T("L_SCN_SET_NTFY_TOPIC"))
             n_url.connect("changed", lambda w: save_ntfy(url=w.get_text().strip()))
@@ -4600,9 +4634,12 @@ def gui():
             freq_box.append(n_freqs)
             line("", freq_box)
             hint(T("L_SCN_SET_NTFY_WHEN_HINT"))
-            n_attach = Gtk.CheckButton(label=T("L_SCN_SET_NTFY_ATTACH"), active=bool(nc.get("attach")))
+            n_attach = Gtk.CheckButton(label=T("L_SCN_SET_NTFY_ATTACH", NTFY_MAX_ATTACH // 1_000_000),
+                                       active=bool(nc.get("attach")))
             n_attach.connect("toggled", lambda w: save_ntfy(attach=w.get_active()))
             line("", n_attach)
+            hint(T("L_SCN_SET_NTFY_ATTACH_HINT") + ("" if shutil.which("lame") or shutil.which("ffmpeg") else
+                                                    " " + T("L_SCN_SET_NTFY_NO_MP3")))
             n_test = icon_button("mail-send-symbolic", T("L_SCN_SET_NTFY_TEST"))
             line("", n_test)
             n_result = hint(T("L_SCN_SET_NTFY_LAST_ERR", NTFY_LAST["error"]) if NTFY_LAST.get("error") else "")
@@ -4620,6 +4657,17 @@ def gui():
                     GLib.idle_add(lambda: n_result.set_text(msg) and False)
                 threading.Thread(target=work, daemon=True).start()
             n_test.connect("clicked", test_ntfy)
+            # the topic, token and conditions show once the box is ticked: filled in with the box unticked,
+            # they looked like a working setup that never sent anything
+            n_fields = [w for w in children(grid) if w not in before]
+
+            def ntfy_toggled(w):
+                save_ntfy(enabled=w.get_active())
+                for f in n_fields:
+                    f.set_visible(w.get_active())
+            n_on.connect("toggled", ntfy_toggled)
+            for f in n_fields:
+                f.set_visible(n_on.get_active())
 
             # Transcription
             section(T("L_SCN_SET_TR"))
