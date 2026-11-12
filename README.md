@@ -33,7 +33,8 @@ that, which keeps it fast on a small ARM board.
   optional chime plays the preview as soon as a new frequency talks. The audio is kept 30 days (your
   choice), the log for good.
 - **Interference memory**: a frequency heard 3 times in a row without speech is banned for good; mark
-  the false positives as "not interference".
+  the false positives as "not interference", or ban by hand a capture that is not speech (the bug
+  button of a log row).
 - **Several receivers** share the work, each taking first what only it can tune (HF on a Blog V4), never
   two on the same frequency. RTL-SDR dongles out of the box; HackRF, Airspy, SDRplay, LimeSDR, PlutoSDR…
   through SoapySDR (optional).
@@ -133,7 +134,10 @@ archangesdr --bands                      # the configured ranges
 
 In the window: tick your receivers and your ranges, then **Scan**. Everything else (language, region,
 theme, recordings, Join program, notifications, transcription) is in the **Settings** tab. On a short screen, the
-arrow under the scan cards folds their spectra away (the choice is kept). `SIGUSR1` pauses the scan
+arrow under the scan cards folds their spectra away (the choice is kept). The detection log and the
+interference list show 25 rows per page; on a narrow window their buttons shrink to their icons (the
+text stays in the tooltip). Scrollbars are always shown, not only when the pointer moves over a list. A Preview
+or Listen button shows the progress of its playback. `SIGUSR1` pauses the scan
 and frees the receivers, for a launcher that needs them: `pkill -USR1 -f /archangesdr`.
 
 A few settings live in a plain `KEY=value` file (`~/.config/archangesdr/archangesdr.conf` for the

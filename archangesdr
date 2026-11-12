@@ -62,7 +62,7 @@ import wave
 
 import numpy as np
 
-APP_DIR = os.path.dirname(os.path.realpath(__file__))   # lang/ and ranges/ ship next to the program
+APP_DIR = os.path.dirname(os.path.realpath(__file__))   # lang/, ranges/ and icons/ ship next to the program
 LANGS = ("en", "fr", "de", "es")
 _CONFIG = os.environ.get("XDG_CONFIG_HOME") or os.path.expanduser("~/.config")
 _DATA = os.environ.get("XDG_DATA_HOME") or os.path.expanduser("~/.local/share")
@@ -218,6 +218,11 @@ AUDIO_HALF_BW = 8_000     # demodulation over ±8 kHz → audio at 16 kHz
 CONT_OCCUPANCY = 0.95     # present during the whole capture...
 CONT_VISITS = 3           # ... at 3 passes in a row: continuous carrier, ignored for the rest of the scan
 ACTIVE_HOLD_S = 120       # a frequency stays "active" 2 min after the last speech heard
+PREVIEW_ICON = "application-x-addon-symbolic"   # a puzzle piece (Adwaita): the preview is a sample of
+                                                # the conversation; ▶ stays for the whole recording
+PAGE_ROWS = 25            # rows per page of the journal and of the interference list: a row costs ~20 ms
+                          # to build on a CM4, 300 at once froze the window for seconds
+COMPACT_W = 1100          # px: a narrower list shows its action buttons as icons only (their text in a tooltip)
 
 # Progressive listen: read in 0.5 s blocks, the verdict as soon as it is clear rather than after the whole dwell
 LISTEN_STEP_S = 0.5
@@ -1756,6 +1761,16 @@ class FreqRules:
             row = dict(row)
         self._save(k, freq, (label, mode) if label or mode else None, row)
 
+    def ban(self, freq, label=None, mode=None, reason=None, audio=None):
+        """Banned by the user (speech the test let through: data, a beacon...): never listened to again,
+        off the whitelist. Unbanned from the Interference tab."""
+        with self.lock:
+            k = self._near(freq)
+            row = self.rows.setdefault(k, {"parasite": 0, "banned": None, "whitelisted": None})
+            row.update(parasite=max(row["parasite"], BAN_PARASITE), banned=time.time(), whitelisted=None)
+            row = dict(row)
+        self._save(k, freq, (label, mode), row, reason, audio)
+
     def forget(self, freq):
         """Unbans: the frequency is listened to again, its count starts from zero."""
         with self.lock:
@@ -2813,6 +2828,20 @@ def cli(args):
 
 # --- GTK interface -------------------------------------------------------------------------------
 
+def page_numbers(page, pages):
+    """The page buttons (0-based, None: an ellipsis): the first, the last and the neighbours of the
+    current one, e.g. 1 … 5 6 7 … 12. A gap of a single page shows that page rather than an ellipsis."""
+    keep = sorted({0, pages - 1, page - 1, page, page + 1} & set(range(pages)))
+    out = []
+    for p in keep:
+        if out and p - out[-1] == 2:
+            out.append(p - 1)
+        elif out and p - out[-1] > 2:
+            out.append(None)
+        out.append(p)
+    return out
+
+
 def gui():
     # GTK 4 can hang at start waiting for the XDG desktop portal (none under i3, a stuck one seen under
     # Hyprland); the scanner does not need it
@@ -2849,10 +2878,22 @@ def gui():
     # An icon theme named in the settings but not installed: GTK picks icons here and there (some in
     # colour, from other apps' hicolor icons). GTK's own then.
     settings = Gtk.Settings.get_default()
+    icon_theme = Gtk.IconTheme.get_for_display(Gdk.Display.get_default())
+    # the app's own symbolic icons (bug, journal, chart, settings): Adwaita has none of them, or not in every
+    # version (no gear in Adwaita 48, Debian 13)
+    icon_theme.add_search_path(os.path.join(APP_DIR, "icons"))
     icons = settings.get_property("gtk-icon-theme-name") or ""
-    search = Gtk.IconTheme.get_for_display(Gdk.Display.get_default()).get_search_path() or []
+    search = icon_theme.get_search_path() or []
     if icons and not any(os.path.isfile(os.path.join(d, icons, "index.theme")) for d in search):
         settings.set_property("gtk-icon-theme-name", "Adwaita")
+    # Scrollbars always shown (not overlaid, appearing only once the pointer moves over the content): on the
+    # uConsole's trackball, finding a hidden bar was a chore. The setting (GTK 4.6+) also reaches GTK's own
+    # scrolled windows (drop-down lists); scrolled() covers ours on older versions.
+    if settings.find_property("gtk-overlay-scrolling"):
+        settings.set_property("gtk-overlay-scrolling", False)
+
+    def scrolled(**kw):
+        return Gtk.ScrolledWindow(overlay_scrolling=False, **kw)
 
     path, pattern, _ = PROFILE["accent"]   # the desktop's accent color (rofi theme), one of the choices
     desktop_accent = None
@@ -2898,6 +2939,9 @@ def gui():
                       primary="#" + accent_hex if dark else "shade(#%s, 0.72)" % accent_hex)
         return ("" if own_theme else DESKTOP_FIX) + """
         .freq { font-family: monospace; font-size: 1.25em; font-weight: bold; }
+        /* a wider slider: easier to grab with a trackball */
+        scrollbar.vertical slider { min-width: 10px; }
+        scrollbar.horizontal slider { min-height: 10px; }
         .active-freq { color: #%(a)s; }
         .score-good { color: #%(good)s; }
         .score-ok { color: #%(ok)s; }
@@ -2920,10 +2964,24 @@ def gui():
         button.danger:hover { background-color: shade(#%(danger)s, 1.1); }
         button.plain { background-image: none; background-color: alpha(currentColor, 0.12); color: inherit; }
         button.plain:hover { background-color: alpha(currentColor, 0.2); }
+        /* greyed out when it cannot be used (Previous on the first page...): the colours above hid it */
+        button.plain:disabled, button.primary:disabled, button.danger:disabled { opacity: 0.35; }
         .parasite { opacity: 0.6; }
         .params { font-family: monospace; font-size: 0.85em; }
         .transcript { font-style: italic; }
         .section { font-weight: bold; font-size: 1.05em; margin-top: 10px; }
+        /* the playback progress, under the play button's text. No negative margin anywhere: GTK warns of
+           a negative size ("reported min height -2"); the theme's -1 px side margins on the progress
+           too. min-width 0: GTK's 150 px default, wider than a "Stop" button, left it undrawn */
+        progressbar.play-progress { margin: 0; min-width: 0; min-height: 3px; }
+        progressbar.play-progress > trough { margin: 0; min-width: 0; min-height: 3px; border: none;
+                                             box-shadow: none; background-color: alpha(currentColor, 0.15); }
+        progressbar.play-progress > trough > progress { margin: 0; min-width: 0; min-height: 3px;
+                                                       background-image: none; border: none; box-shadow: none;
+                                                       outline: none; border-radius: 2px;
+                                                       background-color: #%(a)s; }
+        .card-title { font-size: 1.15em; margin-top: 0; padding-bottom: 6px;
+                      border-bottom: 1px solid alpha(currentColor, 0.15); }
         /* the spectra's fold arrow: a thin strip between the cards and the scan bar */
         button.fold { min-height: 0; padding: 0 24px; margin: -4px 0; }
         """ % colors
@@ -3032,8 +3090,8 @@ def gui():
         return box
 
     def icon_button(icon, text, tip=None, css="plain"):
-        """A button with an icon before its text."""
-        bt = Gtk.Button(valign=Gtk.Align.CENTER, tooltip_text=tip)
+        """A button with an icon before its text (the text hides on a narrow list: see App.set_compact)."""
+        bt = Gtk.Button(valign=Gtk.Align.CENTER, tooltip_text=tip or text)
         bt.set_child(icon_label(icon, text))
         if css:
             bt.add_css_class(css)
@@ -3086,6 +3144,7 @@ def gui():
             self.scan_devs = []        # the receivers of the scan running or paused
             self.state = None          # ScanState of the scan running or paused
             self.player = None         # (process, file) of the capture being played
+            self.play_t0, self.play_len, self.play_timer = 0.0, 1.0, None   # its progress (play_progress)
             self.cards = {}            # receiver id (None: no scan) → its "current scan" card
             self.devices = []
             self.after_stop = []
@@ -3096,6 +3155,15 @@ def gui():
             self.last_journal = 0
             self.list_rows = {}        # ListBox → {key: (signature, row)} (sync)
             self.play_buttons = []     # (button, file, text): their ▶ / ■ follows the player
+            self.join_found = None     # {program id: installed}, looked up again at each refresh_lists
+            self.fill_until, self.fill_done = 0, True   # sync: end of the time slice, every row built
+            self.fill_more = None      # GLib source of the next slice
+            self.log_page, self.rules_page_n = 0, 0     # the page shown of each list (0-based)
+            self.log_filter = None     # the journal's filters: a change goes back to the first page
+            self.compact = False       # action buttons as icons only (a narrow list)
+            self.pagers = {}           # ListBox → (its pager, its scrolled window)
+
+        FILL_SLICE_S = 0.1         # s of row building per refresh: shorter, GTK lays the list out again more often
 
         # Settings, theme -----------------------------------------------------------------------------
         def save(self, **fields):
@@ -3178,7 +3246,9 @@ def gui():
             self.transcriber = Transcriber(self.store, on_done=lambda did: GLib.idle_add(
                 lambda: self.refresh_lists() and False))
             self.transcriber.start()
-            self.refresh_lists()
+            # the lists are filled once the window has drawn itself: built before, their hundreds of rows
+            # kept it black for seconds on a Raspberry Pi (CM4). A low-priority idle runs after the redraw.
+            GLib.idle_add(lambda: self.refresh_lists() and False, priority=GLib.PRIORITY_LOW)
             threading.Thread(target=self.purge, daemon=True).start()
 
         def purge(self):
@@ -3191,7 +3261,7 @@ def gui():
         def scroll_column(child):
             """A column that scrolls when the window is shorter than its content (a tiling window manager
             imposes the height of its tile; GTK would otherwise complain at every frame and cut it off)."""
-            sw = Gtk.ScrolledWindow(hscrollbar_policy=Gtk.PolicyType.NEVER, propagate_natural_width=True,
+            sw = scrolled(hscrollbar_policy=Gtk.PolicyType.NEVER, propagate_natural_width=True,
                                     vexpand=True)
             sw.set_child(child)
             return sw
@@ -3265,21 +3335,29 @@ def gui():
             # 3. The tabs
             self.tabs = Gtk.Notebook(vexpand=True)
             self.tabs.set_size_request(-1, 220)
-            self.journal_page = self.tabs.append_page(self.build_journal(), Gtk.Label(label=T("L_SCN_TAB_LOG")))
+            def tab(icon, text):
+                box = Gtk.Box(spacing=6)
+                box.append(Gtk.Image.new_from_icon_name(icon))
+                box.text = Gtk.Label(label=text)
+                box.append(box.text)
+                return box
+            log_tab, rules_tab = tab("archangesdr-journal-symbolic", T("L_SCN_TAB_LOG")), \
+                tab("archangesdr-bug-symbolic", T("L_SCN_TAB_RULES"))
+            self.journal_page = self.tabs.append_page(self.build_journal(), log_tab)
             self.rules_list = Gtk.ListBox(selection_mode=Gtk.SelectionMode.NONE)
             page = Gtk.Box(orientation=Gtk.Orientation.VERTICAL)
             page.append(label(T("L_SCN_RULES_HINT", BAN_PARASITE), ["dim"], wrap=True, margin_start=8,
                               margin_end=8, margin_top=6, margin_bottom=4))
-            sw = Gtk.ScrolledWindow(vexpand=True, hscrollbar_policy=Gtk.PolicyType.NEVER)
-            sw.set_child(self.rules_list)
-            page.append(sw)
-            self.rules_page = self.tabs.append_page(page, Gtk.Label(label=T("L_SCN_TAB_RULES")))
-            self.stats_page = self.tabs.append_page(self.build_stats(), Gtk.Label(label=T("L_SCN_TAB_STATS")))
-            self.tabs.append_page(self.build_settings(), Gtk.Label(label=T("L_SCN_TAB_SETTINGS")))
+            page.append(self.paged(self.rules_list, self.set_rules_page))
+            self.rules_page = self.tabs.append_page(page, rules_tab)
+            self.stats_page = self.tabs.append_page(self.build_stats(), tab("archangesdr-chart-symbolic",
+                                                                            T("L_SCN_TAB_STATS")))
+            self.tabs.append_page(self.build_settings(), tab("archangesdr-settings-symbolic", T("L_SCN_TAB_SETTINGS")))
             self.tabs.connect("switch-page", lambda _n, _p, i: i == self.stats_page and
                               GLib.idle_add(lambda: self.refresh_stats(devices=True) and False))
-            self.journal_tab_label = self.tabs.get_tab_label(self.tabs.get_nth_page(self.journal_page))
-            self.rules_tab_label = self.tabs.get_tab_label(self.tabs.get_nth_page(self.rules_page))
+            self.tabs.connect("switch-page", lambda _n, _p, i: i == self.rules_page and
+                              GLib.idle_add(lambda: self.refresh_lists() and False))
+            self.journal_tab_label, self.rules_tab_label = log_tab.text, rules_tab.text
             root.append(self.tabs)
             self.win.set_child(self.scroll_column(root))
             self.update_ranges_btn()
@@ -3402,7 +3480,7 @@ def gui():
             dlg.set_default_size(620, 560)
             outer.append(label(T("L_SCN_RANGES_HINT"), ["dim"], wrap=True))
             self.range_box = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=2)
-            sw = Gtk.ScrolledWindow(vexpand=True, hscrollbar_policy=Gtk.PolicyType.NEVER, min_content_height=200)
+            sw = scrolled(vexpand=True, hscrollbar_policy=Gtk.PolicyType.NEVER, min_content_height=200)
             sw.set_child(self.range_box)
             outer.append(sw)
             tools = Gtk.Box(spacing=8)
@@ -3828,8 +3906,11 @@ def gui():
             return self.settings.setdefault("join", {})
 
         def join_programs(self):
-            """[(id, name, available)]: the built-in ones, then the user's commands ("cmd:<n>")."""
-            out = [(pid, name, bool(shutil.which(exe))) for pid, name, exe in JOIN_PROGRAMS]
+            """[(id, name, available)]: the built-in ones, then the user's commands ("cmd:<n>"). Which programs
+            are installed is looked up once per refresh of the lists (PATH searched for each row otherwise)."""
+            if self.join_found is None:
+                self.join_found = {pid: bool(shutil.which(exe)) for pid, _, exe in JOIN_PROGRAMS}
+            out = [(pid, name, self.join_found[pid]) for pid, name, _ in JOIN_PROGRAMS]
             for i, c in enumerate(self.join_conf().get("commands", [])):
                 if c.get("command"):
                     out.append(("cmd:%d" % i, c.get("name") or T("L_SCN_JOIN_CMD_N", i + 1), True))
@@ -3891,17 +3972,25 @@ def gui():
             bt.set_tooltip_text(T("L_SCN_JOIN_TIP", fmt_mhz(r["freq"]), r["mode"], name))
             bt.connect("clicked", lambda *_: self.join(r["freq"], r["mode"], r["device"]))
             box.append(bt)
-            menu = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=2, margin_top=6, margin_bottom=6,
-                           margin_start=6, margin_end=6)
-            pop = Gtk.Popover(child=menu)
-            for pid, pname, available in self.join_programs():
-                item = Gtk.Button(label=pname if available else T("L_SCN_JOIN_MISSING", pname), sensitive=available)
-                item.add_css_class("flat")
-                item.get_child().set_xalign(0)
-                item.connect("clicked", lambda _w, pid=pid: (pop.popdown(),
-                                                             self.join(r["freq"], r["mode"], r["device"], pid)))
-                menu.append(item)
-            more = Gtk.MenuButton(popover=pop, icon_name="pan-down-symbolic", tooltip_text=T("L_SCN_JOIN_WITH"))
+
+            def menu(more):
+                """The ▾ menu, built at its first opening: one popover per row cost half of the log's building."""
+                if more.get_popover() is not None:
+                    return
+                items = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=2, margin_top=6, margin_bottom=6,
+                                margin_start=6, margin_end=6)
+                pop = Gtk.Popover(child=items)
+                for pid, pname, available in self.join_programs():
+                    item = Gtk.Button(label=pname if available else T("L_SCN_JOIN_MISSING", pname),
+                                      sensitive=available)
+                    item.add_css_class("flat")
+                    item.get_child().set_xalign(0)
+                    item.connect("clicked", lambda _w, pid=pid: (pop.popdown(),
+                                                                 self.join(r["freq"], r["mode"], r["device"], pid)))
+                    items.append(item)
+                more.set_popover(pop)
+            more = Gtk.MenuButton(icon_name="pan-down-symbolic", tooltip_text=T("L_SCN_JOIN_WITH"))
+            more.set_create_popup_func(menu)
             more.get_first_child().add_css_class("listen")      # the button inside the menu button
             box.append(more)
             return box
@@ -3922,23 +4011,61 @@ def gui():
                         break
                     except FileNotFoundError:
                         continue
+            if self.player:
+                # the players say nothing of their position: the time elapsed over the file's length
+                self.play_t0, self.play_len = time.monotonic(), max(wav_seconds(path), 0.1)
+                if not self.play_timer:
+                    self.play_timer = GLib.timeout_add(100, self.play_progress)
             self.update_play_buttons()
 
-        def play_button(self, path, text, tip):
-            """▶ <text>, or ■ Stop while that file plays."""
-            bt = icon_button("media-playback-start-symbolic", text, tip)
+        def play_progress(self):
+            """The progress bar of the button(s) of the file playing, every 100 ms while it plays."""
+            if self.player and self.player[0].poll() is not None:
+                self.player = None
+                self.update_play_buttons()
+            if not self.player:
+                self.play_timer = None
+                return False
+            frac = min(1.0, (time.monotonic() - self.play_t0) / self.play_len)
+            for bt, path, _ in self.play_buttons:
+                if path == self.player[1] and getattr(bt, "bar", None) is not None:
+                    bt.bar.set_fraction(frac)
+            return True
+
+        def play_button(self, path, text, tip, icon="media-playback-start-symbolic"):
+            """<icon> <text>, or ■ Stop while that file plays."""
+            bt = icon_button(icon, text, tip)
             bt.connect("clicked", lambda *_: self.play_clip(path))
+            bt.playing, bt.idle_icon, bt.bar = False, icon, None
+            bt.icon = bt.get_child().get_first_child()
+            bt.text = bt.icon.get_next_sibling()
             self.play_buttons.append((bt, path, text))
             self.set_play_icon(bt, path, text)
             return bt
 
         def set_play_icon(self, bt, path, text):
+            """▶ / ■ changed in place: a new child per button doubled the cost of the rows (seconds on a CM4)."""
             playing = bool(self.player and self.player[1] == path)
-            if getattr(bt, "playing", None) == playing:
+            if bt.playing == playing:
                 return
             bt.playing = playing
-            bt.set_child(icon_label("media-playback-stop-symbolic" if playing else "media-playback-start-symbolic",
-                                    T("L_SCN_PLAYING_STOP") if playing else text))
+            bt.icon.set_from_icon_name("media-playback-stop-symbolic" if playing else bt.idle_icon)
+            bt.text.set_text(T("L_SCN_PLAYING_STOP") if playing else text)
+            if playing and bt.bar is None:
+                # the progress bar, under the text, added at the first playing (one per row built in
+                # advance would cost the rows)
+                content = bt.get_child()
+                bt.set_child(None)
+                column = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=2)
+                column.append(content)
+                bt.bar = Gtk.ProgressBar(can_target=False)
+                bt.bar.add_css_class("play-progress")
+                column.append(bt.bar)
+                bt.set_child(column)
+                bt.content = content
+            if bt.bar is not None:
+                bt.bar.set_fraction(0)
+                bt.bar.set_visible(playing)
 
         def update_play_buttons(self):
             """The play buttons follow the player in place: rebuilding their rows would take the focus (and
@@ -3977,30 +4104,34 @@ def gui():
 
         def transcribe_button(self, did, again):
             """'Transcribe' and its popover: the language (or detected), then go."""
-            box = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=8, margin_top=8, margin_bottom=8,
-                          margin_start=8, margin_end=8)
-            box.append(label(T("L_SCN_TR_LANG")))
-            langs = [None] + list(TRANSCRIBE_LANGS)
-            dd = dropdown([T("L_SCN_TR_AUTO")] + [LANG_LABELS.get(l, l) for l in TRANSCRIBE_LANGS])
-            box.append(dd)
-            go = icon_button("media-playback-start-symbolic", T("L_SCN_TR_GO"), css="primary")
-            box.append(go)
-            pop = Gtk.Popover(child=box)
-            mb = Gtk.MenuButton(popover=pop, valign=Gtk.Align.CENTER,
+            mb = Gtk.MenuButton(valign=Gtk.Align.CENTER,
                                 tooltip_text=T("L_SCN_TR_AGAIN") if again else T("L_SCN_TR_BTN"))
-            inner = Gtk.Box(spacing=6)
-            inner.append(Gtk.Image.new_from_icon_name("insert-text-symbolic"))
-            inner.append(Gtk.Label(label=T("L_SCN_TR_BTN")))
-            mb.set_child(inner)
+            mb.set_child(icon_label("insert-text-symbolic", T("L_SCN_TR_BTN")))
             mb.add_css_class("plain")
 
-            def start(*_):
-                pop.popdown()
-                self.store.request_transcript(did, langs[dd.get_selected()])
-                if self.transcriber:
-                    self.transcriber.wake.set()
-                self.refresh_lists()
-            go.connect("clicked", start)
+            def menu(mb):
+                """Built at its first opening (a drop-down of 17 languages per row otherwise)."""
+                if mb.get_popover() is not None:
+                    return
+                box = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=8, margin_top=8, margin_bottom=8,
+                              margin_start=8, margin_end=8)
+                box.append(label(T("L_SCN_TR_LANG")))
+                langs = [None] + list(TRANSCRIBE_LANGS)
+                dd = dropdown([T("L_SCN_TR_AUTO")] + [LANG_LABELS.get(l, l) for l in TRANSCRIBE_LANGS])
+                box.append(dd)
+                go = icon_button("media-playback-start-symbolic", T("L_SCN_TR_GO"), css="primary")
+                box.append(go)
+                pop = Gtk.Popover(child=box)
+
+                def start(*_):
+                    pop.popdown()
+                    self.store.request_transcript(did, langs[dd.get_selected()])
+                    if self.transcriber:
+                        self.transcriber.wake.set()
+                    self.refresh_lists()
+                go.connect("clicked", start)
+                mb.set_popover(pop)
+            mb.set_create_popup_func(menu)
             return mb
 
         # Journal -------------------------------------------------------------------------------------
@@ -4034,12 +4165,98 @@ def gui():
             self.journal_summary = label("", ["dim"], margin_start=10)
             page.append(self.journal_summary)
             self.log_list = Gtk.ListBox(selection_mode=Gtk.SelectionMode.NONE)
-            sw = Gtk.ScrolledWindow(vexpand=True, hscrollbar_policy=Gtk.PolicyType.NEVER)
-            sw.set_child(self.log_list)
-            page.append(sw)
+            page.append(self.paged(self.log_list, self.set_log_page))
             self.f_range_items = []
             self.rebuild_range_filters()
             return page
+
+        def paged(self, listbox, on_page):
+            """The list in its scrolled window, its pager below (outside the scrolled window: always in
+            sight), and a probe of its width (the DrawingArea's resize signal, GTK 4.0+: no window-size
+            signal fits a tiling window manager)."""
+            box = Gtk.Box(orientation=Gtk.Orientation.VERTICAL)
+            probe = Gtk.DrawingArea(hexpand=True, content_height=1)
+            probe.connect("resize", lambda _w, width, _h: self.set_compact(width < COMPACT_W))
+            box.append(probe)
+            pager = self.pager(on_page)
+            sw = scrolled(vexpand=True, hscrollbar_policy=Gtk.PolicyType.NEVER)
+            sw.set_child(listbox)
+            box.append(sw)
+            box.append(pager)
+            self.pagers[listbox] = (pager, sw)
+            return box
+
+        def pager(self, on_page):
+            """‹ Previous  1 … 4 5 6 … 12  Next ›, hidden while everything fits on one page."""
+            box = Gtk.Box(spacing=4, halign=Gtk.Align.CENTER, margin_top=4, margin_bottom=4, visible=False)
+            box.prev = icon_button("go-previous-symbolic", T("L_SCN_PAGE_PREV"))
+            box.next = icon_button("go-next-symbolic", T("L_SCN_PAGE_NEXT"))
+            box.nums = Gtk.Box(spacing=2)
+            box.state = (0, 1)
+            box.prev.connect("clicked", lambda *_: on_page(box.state[0] - 1))
+            box.next.connect("clicked", lambda *_: on_page(box.state[0] + 1))
+            for w in (box.prev, box.nums, box.next):
+                box.append(w)
+            self.apply_compact(box)
+            return box
+
+        def update_pagers(self, listbox, page, pages):
+            box = self.pagers[listbox][0]
+            box.set_visible(pages > 1)
+            if box.state != (page, pages):
+                box.state = (page, pages)
+                box.prev.set_sensitive(page > 0)
+                box.next.set_sensitive(page < pages - 1)
+                while (c := box.nums.get_first_child()) is not None:
+                    box.nums.remove(c)
+                for p in page_numbers(page, pages):
+                    if p is None:
+                        box.nums.append(label("…", ["dim"], valign=Gtk.Align.CENTER))
+                        continue
+                    bt = Gtk.Button(label=str(p + 1), valign=Gtk.Align.CENTER)
+                    bt.add_css_class("primary" if p == page else "plain")
+                    bt.connect("clicked", lambda _w, p=p: self.go_page(listbox, p))
+                    box.nums.append(bt)
+
+        def go_page(self, listbox, page):
+            (self.set_log_page if listbox is self.log_list else self.set_rules_page)(page)
+
+        def set_log_page(self, page):
+            self.log_page = max(0, page)
+            self.refresh_lists()
+            self.pagers[self.log_list][1].get_vadjustment().set_value(0)     # the new page from its top
+
+        def set_rules_page(self, page):
+            self.rules_page_n = max(0, page)
+            self.refresh_lists()
+            self.pagers[self.rules_list][1].get_vadjustment().set_value(0)
+
+        def set_compact(self, compact):
+            if compact == self.compact:
+                return
+            self.compact = compact
+            for listbox, (pager, _) in self.pagers.items():
+                for w in (listbox, pager):
+                    self.apply_compact(w)
+
+        def apply_compact(self, widget):
+            """The action buttons under widget: icon and text, or the icon alone on a narrow list."""
+            stack = [widget]
+            while stack:
+                w = stack.pop()
+                if isinstance(w, (Gtk.Button, Gtk.MenuButton)) and w.has_css_class("plain") or \
+                        isinstance(w, Gtk.Button) and w.has_css_class("primary"):
+                    box = w.get_child()
+                    box = getattr(w, "content", None) or box  # a play button that has played: its row
+                    if isinstance(box, Gtk.Box) and isinstance(box.get_first_child(), Gtk.Image):
+                        text = box.get_first_child().get_next_sibling()
+                        if text is not None:
+                            text.set_visible(not self.compact)
+                        continue
+                c = w.get_first_child()
+                while c is not None:
+                    stack.append(c)
+                    c = c.get_next_sibling()
 
         def rebuild_range_filters(self):
             """The ranges of the range filter (journal) follow the ranges list."""
@@ -4119,7 +4336,7 @@ def gui():
             row.append(txt)
             if r["audio"] and os.path.exists(r["audio"]):
                 row.append(self.play_button(r["audio"], T("L_SCN_PREVIEW", short_secs(wav_seconds(r["audio"]))),
-                                            T("L_SCN_CLIP_TIP")))
+                                            T("L_SCN_CLIP_TIP"), PREVIEW_ICON))
             if r["recording"] and os.path.exists(r["recording"]):
                 row.append(self.play_button(r["recording"], T("L_SCN_LISTEN", short_secs(wav_seconds(r["recording"]))),
                                             T("L_SCN_REC_TIP", r["recording"])))
@@ -4130,10 +4347,25 @@ def gui():
                 row.append(self.transcribe_button(r["id"], bool(status)))
             if parasite:
                 row.append(self.white_button(r["freq"], r["label"], r["mode"]))
+            elif r["kind"] == "voice":
+                bug = Gtk.Button(icon_name="archangesdr-bug-symbolic", valign=Gtk.Align.CENTER,
+                                 tooltip_text=T("L_SCN_MARK_PARASITE_TIP", fmt_mhz(r["freq"])))
+                bug.add_css_class("plain")
+                bug.connect("clicked", lambda *_: self.mark_parasite(r))
+                row.append(bug)
             row.append(self.join_button(r))
             return row
 
+        def mark_parasite(self, r):
+            """A capture the speech test let through: its frequency banned (the scan never listens to it
+            again) and the row moved to the interference (shown with "Show interference")."""
+            reason = T("L_SCN_REASON_MARKED")
+            self.store.rules.ban(r["freq"], r["label"], r["mode"], reason, r["audio"])
+            self.store.q("UPDATE detections SET kind = 'parasite', reason = ? WHERE id = ?", (reason, r["id"]), True)
+            self.refresh_lists()
+
         def journal_rows(self):
+            """(the rows of the page shown, the number of rows the filters keep)."""
             where, args = [], []
             if not self.f_parasites.get_active():
                 where.append("d.kind != 'parasite'")
@@ -4156,39 +4388,60 @@ def gui():
             found = self.store.search_transcripts(self.f_search.get_text())
             if found is not None:
                 where.append("d.id IN (%s)" % (",".join(str(int(i)) for i in found) or "NULL"))
+            cond = "WHERE " + " AND ".join(where) if where else ""
+            if (cond, args) != self.log_filter:
+                self.log_filter, self.log_page = (cond, args), 0
+            total = self.store.q("SELECT COUNT(*) FROM detections d " + cond, args)[0][0]
+            self.log_page = min(self.log_page, max(0, (total - 1) // PAGE_ROWS))
             cols = ("id", "freq", "mode", "label", "first_seen", "last_seen", "hits", "snr", "score", "scan_id",
                     "kind", "reason", "audio", "params", "recording", "rec_s", "device")
             rows = self.store.q("SELECT %s, t.status, t.text, t.language, t.engine, t.error FROM detections d "
                                 "LEFT JOIN transcripts t ON t.detection_id = d.id %s ORDER BY d.last_seen DESC "
-                                "LIMIT 300" % (", ".join("d." + c for c in cols),
-                                               "WHERE " + " AND ".join(where) if where else ""), args)
+                                "LIMIT ? OFFSET ?" % (", ".join("d." + c for c in cols), cond),
+                                args + [PAGE_ROWS, self.log_page * PAGE_ROWS])
             keys = cols + ("t_status", "t_text", "t_language", "t_engine", "t_error")
-            return [dict(zip(keys, r)) for r in rows]
+            return [dict(zip(keys, r)) for r in rows], total
 
         def refresh_lists(self, *_):
             if not hasattr(self, "journal_tab_label"):     # still being built
                 return
             now = time.time()
             self.last_journal = now
+            self.join_found = None
+            self.fill_until = time.perf_counter() + self.FILL_SLICE_S
+            self.fill_done = True
             self.rebuild_scan_filter()
-            rows = self.journal_rows()
+            rows, total = self.journal_rows()
             active_ids = {r["id"] for r in rows if now - r["last_seen"] < (ACTIVE_HOLD_S if r["kind"] == "voice"
                                                                           else STATION_HOLD_S)}
             common = (self.tr_conf().get("engine"), len(load_device_conf()) > 1)
             self.sync(self.log_list, [(r["id"], (tuple(r.values()), r["id"] in active_ids) + common,
                                        lambda r=r: self.det_row(r, now)) for r in rows], T("L_SCN_NO_DETECTIONS"))
-            active = sum(1 for r in rows if r["kind"] == "voice" and now - r["last_seen"] < ACTIVE_HOLD_S)
+            self.update_pagers(self.log_list, self.log_page, max(1, -(-total // PAGE_ROWS)))
+            active = self.store.q("SELECT COUNT(*) FROM detections WHERE kind = 'voice' AND last_seen > ?",
+                                  (now - ACTIVE_HOLD_S,))[0][0]
             self.journal_tab_label.set_text(T("L_SCN_TAB_LOG_N", active) if active else T("L_SCN_TAB_LOG"))
-            self.journal_summary.set_text(P("L_SCN_F_COUNT", len(rows), len(rows)) +
-                                          (T("L_SCN_F_LIMIT") if len(rows) >= 300 else ""))
-            rules = self.store.q("SELECT freq, mode, label, parasite, banned, whitelisted, last_seen, reason, audio "
-                                 "FROM freq_rules ORDER BY banned IS NULL, whitelisted IS NULL, parasite DESC, "
-                                 "last_seen DESC LIMIT 300")
-            self.sync(self.rules_list, [(r[0], r, lambda r=r: self.rule_row(*r)) for r in rules], T("L_SCN_NO_RULES"))
-            n = sum(1 for r in rules if r[4])
+            self.journal_summary.set_text(P("L_SCN_F_COUNT", total, total))
+            if self.tabs.get_current_page() == self.rules_page:     # its rows are built once it is shown
+                n_rules = self.store.q("SELECT COUNT(*) FROM freq_rules")[0][0]
+                self.rules_page_n = min(self.rules_page_n, max(0, (n_rules - 1) // PAGE_ROWS))
+                rules = self.store.q("SELECT freq, mode, label, parasite, banned, whitelisted, last_seen, reason, "
+                                     "audio FROM freq_rules ORDER BY banned IS NULL, whitelisted IS NULL, parasite "
+                                     "DESC, last_seen DESC LIMIT ? OFFSET ?",
+                                     (PAGE_ROWS, self.rules_page_n * PAGE_ROWS))
+                self.sync(self.rules_list, [(r[0], r, lambda r=r: self.rule_row(*r)) for r in rules],
+                          T("L_SCN_NO_RULES"))
+                self.update_pagers(self.rules_list, self.rules_page_n, max(1, -(-n_rules // PAGE_ROWS)))
+            n = self.store.q("SELECT COUNT(*) FROM freq_rules WHERE banned IS NOT NULL")[0][0]
             self.rules_tab_label.set_text(T("L_SCN_TAB_RULES_N", n) if n else T("L_SCN_TAB_RULES"))
             if self.tabs.get_current_page() == self.stats_page:
                 self.refresh_stats()
+            if not self.fill_done and self.fill_more is None:      # the rest at the next idle moment
+                def more():
+                    self.fill_more = None
+                    self.refresh_lists()
+                    return False
+                self.fill_more = GLib.idle_add(more, priority=GLib.PRIORITY_LOW)
 
         def dev_label(self, dev):
             if not dev:
@@ -4206,7 +4459,10 @@ def gui():
             """Shows items [(key, signature, build)] in listbox, in that order, building only the rows that
             are new or whose signature changed. Rebuilding every row took seconds on a Raspberry Pi, took
             away the button being clicked, and GTK then moved the focus to the first row and scrolled the
-            list back to the top."""
+            list back to the top.
+            The rows are built for FILL_SLICE_S at most per refresh (a row costs ~20 ms on a CM4): the
+            others keep their old version, or wait, until the next slice (refresh_lists asks for it), so
+            the window stays responsive while a long list fills."""
             old = self.list_rows.setdefault(listbox, {})
             if not items:
                 items = [(None, empty, lambda: label(empty, ["dim"], wrap=True, margin_top=20, margin_start=12,
@@ -4219,8 +4475,15 @@ def gui():
                 had = old.get(key)
                 if had and had[0] == sig:
                     row = had[1]
+                elif order and time.perf_counter() > self.fill_until:
+                    self.fill_done = False
+                    if not had:
+                        continue
+                    sig, row = had             # stale until the next slice rebuilds it
                 else:
                     row = Gtk.ListBoxRow(child=build())
+                    if self.compact:
+                        self.apply_compact(row)
                     if had and focus is not None and (focus == had[1] or focus.is_ancestor(had[1])):
                         refocus = row
                 rows[key] = (sig, row)
@@ -4273,7 +4536,7 @@ def gui():
             row.append(txt)
             if audio and os.path.exists(audio):
                 row.append(self.play_button(audio, T("L_SCN_PREVIEW", short_secs(wav_seconds(audio))),
-                                            T("L_SCN_CLIP_TIP")))
+                                            T("L_SCN_CLIP_TIP"), PREVIEW_ICON))
             if (bt := self.reveal_button(audio)) is not None:
                 row.append(bt)
             if banned:
@@ -4333,7 +4596,7 @@ def gui():
             chart.append(self.stats_axis)
             # without a vertical scrollbar, the height asked is the drawing's own (min-content-height only
             # applies to a scrolling one): a short window squeezed the chart to a few pixels
-            sw = Gtk.ScrolledWindow(hexpand=True, vexpand=True, vscrollbar_policy=Gtk.PolicyType.NEVER)
+            sw = scrolled(hexpand=True, vexpand=True, vscrollbar_policy=Gtk.PolicyType.NEVER)
             self.stats_area = Gtk.DrawingArea(content_height=self.STATS_H, vexpand=True)
             self.stats_area.set_draw_func(self.draw_stats)
             self.stats_area.set_has_tooltip(True)
@@ -4515,20 +4778,30 @@ def gui():
 
         # Settings -----------------------------------------------------------------------------------
         def build_settings(self):
-            page = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=6, margin_top=8, margin_start=12,
+            page = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=12, margin_top=8, margin_start=12,
                            margin_end=12, margin_bottom=12)
-            grid = Gtk.Grid(column_spacing=12, row_spacing=8)
-            page.append(grid)
-            row = [0]
+            grid, row = None, [0]
+            # the first column lines up from one card to the next
+            name_column = Gtk.SizeGroup(mode=Gtk.SizeGroupMode.HORIZONTAL)
 
             def section(text):
-                grid.attach(label(text, ["section"]), 0, row[0], 3, 1)
-                row[0] += 1
+                """A card of its own per section: titles alone between rows of one grid did not say where a
+                section ended. The rows that follow go into its grid."""
+                nonlocal grid
+                card = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=10)
+                card.add_css_class("card")
+                card.append(label(text, ["section", "card-title"]))
+                grid = Gtk.Grid(column_spacing=12, row_spacing=8)
+                card.append(grid)
+                page.append(card)
+                row[0] = 0
 
             def line(text, widget, extra=None):
                 if not isinstance(widget, (Gtk.Entry, Gtk.PasswordEntry)):
                     widget.set_halign(Gtk.Align.START)       # a drop-down as wide as its choices
-                grid.attach(label(text, valign=Gtk.Align.CENTER), 0, row[0], 1, 1)
+                name = label(text, valign=Gtk.Align.CENTER)
+                name_column.add_widget(name)
+                grid.attach(name, 0, row[0], 1, 1)
                 grid.attach(widget, 1, row[0], 1, 1)
                 if extra:
                     grid.attach(extra, 2, row[0], 1, 1)

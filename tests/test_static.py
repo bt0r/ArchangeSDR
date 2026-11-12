@@ -67,6 +67,20 @@ class Strings(unittest.TestCase):
                     self.assertEqual(len(got), len(want), "%s in %s.sh: %r vs %r" % (key, lang, value, en[key]))
 
 
+class Icons(unittest.TestCase):
+    def test_shipped_icons(self):
+        """Every icon of the app's own (archangesdr-*) is in icons/, symbolic, and installed."""
+        src = open(os.path.join(ROOT, "archangesdr"), encoding="utf-8").read()
+        used = set(re.findall(r"archangesdr-[a-z]+-symbolic", src))
+        self.assertTrue(used)
+        for name in used:
+            path = os.path.join(ROOT, "icons", name + ".svg")
+            self.assertTrue(os.path.isfile(path), name)
+            self.assertIn("<svg", open(path, encoding="utf-8").read())
+        self.assertIn("icons", open(os.path.join(ROOT, "install.sh"), encoding="utf-8").read().split("cp -r")[1]
+                      .splitlines()[0])
+
+
 class Ranges(unittest.TestCase):
     def test_default_ranges(self):
         a = app()

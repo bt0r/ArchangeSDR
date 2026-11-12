@@ -37,6 +37,18 @@ class Helpers(unittest.TestCase):
         self.assertGreater(floor[1000], 0.9)
 
 
+class Pages(unittest.TestCase):
+    def test_page_numbers(self):
+        """The first, the last and the neighbours of the current page; a gap of one page shows that page."""
+        n = app().page_numbers
+        self.assertEqual(n(0, 1), [0])
+        self.assertEqual(n(0, 3), [0, 1, 2])
+        self.assertEqual(n(0, 12), [0, 1, None, 11])
+        self.assertEqual(n(5, 12), [0, None, 4, 5, 6, None, 11])
+        self.assertEqual(n(2, 12), [0, 1, 2, 3, None, 11])        # 1 2 3 4 … 12, not 1 … 2
+        self.assertEqual(n(11, 12), [0, None, 10, 11])
+
+
 class Demodulation(unittest.TestCase):
     def setUp(self):
         self.a = app()

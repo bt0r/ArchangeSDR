@@ -35,6 +35,10 @@ detection, in en / fr / de / es. It ships standalone and inside two desktops by 
   `read`, `coverage`, `rate`, `gain`...); its stream runs from one tune to the next. RTL-SDR dongles stay
   on librtlsdr even when soapyrtlsdr is installed. A receiver needs 2.4 MS/s or more (the hop plan is
   ±1.2 MHz): `pick_rate` takes 2.4 MS/s, else the lowest rate above (Airspy R2: 2.5 MS/s).
+- **The app's own icons** (`icons/archangesdr-*-symbolic.svg`: bug, journal, chart, settings), drawn
+  for it, shipped next to the program (`install.sh` copies `icons/`, `gui()` adds it to the icon theme's
+  search path): Adwaita has no bug, journal nor chart, and its gear is missing from Adwaita 48 (Debian
+  13). Filled shapes only (GTK recolours a symbolic icon's fills, a stroke would come out filled).
 - **The sample rate belongs to the receiver** (`sdr.rate`, `Capture.rate`), never `FS` in the
   processing: `Grid` turns the detection's widths in Hz (`SMOOTH_HZ`, `FLOOR_HZ`, `PEAK_SEP_HZ`,
   `DC_HZ`) into bins of ~1.17 kHz at any rate (2048 bins at 2.4 MS/s, the values the detection was tuned
@@ -68,9 +72,36 @@ detection, in en / fr / de / es. It ships standalone and inside two desktops by 
   to the first row, scrolling the list back to the top. A rebuilt row that had the focus hands it to its
   replacement. The Play buttons follow the player in place (`update_play_buttons`), never through a
   rebuild.
-
-## How the scan works
-
+- **The window shows before its lists; the lists are paged.** Measured on the uConsole (CM4) with a real
+  history (786 detections, 468 interference rules): the window stayed black 10 - 13 s while 300 + 300
+  rows were built in `do_activate`; a row costs ~20 ms there (a button ~3.5 ms, 50 times a PC). Now:
+  the journal and the interference list show `PAGE_ROWS` = 25 rows (SQL `LIMIT / OFFSET`, a `COUNT`
+  for the pagers, `page_numbers`; a filter change goes back to the first page), with a pager below,
+  outside the scrolled window so it stays in sight (`paged`, `pager`); the first `refresh_lists` runs
+  in a low-priority idle, after the first frame;
+  `sync` builds rows for `FILL_SLICE_S` = 0.1 s per refresh and asks for the next slice; the
+  interference list is built only while its tab is shown; the "Join with" and "Transcribe" popovers are
+  built at their first opening (`set_create_popup_func`); the installed programs are looked up once per
+  refresh (`join_found`); a Play button changes its icon and text in place. Result there: first frame
+  0.8 s after the window opens, the journal 2 s later, the interference tab < 1 s.
+- **Compact buttons**: below `COMPACT_W` = 1100 px of list width, the action buttons (`icon_button`, the
+  pagers) hide their text (`set_compact`, `apply_compact`; `icon_button` puts the text in the tooltip
+  when there is no other). The width comes from a 1 px `Gtk.DrawingArea`'s `resize` signal: no
+  window-size signal is reliable under a tiling window manager.
+- **Scrollbars always shown** (`gtk-overlay-scrolling` off, GTK 4.6+, and `scrolled()` for our own scrolled
+  windows on any version; a 10 px slider): GTK's overlay scrollbars appear only once the pointer moves
+  over the content, a chore with the uConsole's trackball.
+- **Playback progress** (`play_progress`, every 100 ms while a file plays): the players (pw-play...)
+  report no position, so it is the time elapsed over the WAV's length. The `ProgressBar` goes under the
+  button's text at its first playing (`set_play_icon`; `bt.content` is the icon and text row), never
+  built in advance (the rows' cost). Its CSS: `min-width: 0` on the bar, trough and progress (GTK's
+  150 px default, wider than a "Stop" button, left the button undrawn) and no negative margin (laid over
+  the button's padding with `margin-bottom: -5px`, GTK warned "reported min height -2" at each
+  playback; the theme's -1 px side margins on the progress did the same for its width).
+- **Settings in cards**: `section()` starts a card (`.card`, title `.card-title`) with a grid of its own
+  (`grid` rebound, `row` reset); `name_column`, a `SizeGroup`, keeps the first column aligned from one
+  card to the next. Code that looks a widget up by row (`grid.get_child_at`, `children(grid)`) works in
+  the current section's grid only; `engine_changed` relies on Transcription being the last section.
 - **Two steps.** Survey: 0.1 s hops 2.06 MHz apart (±1.08 MHz, 90 % of the 2.4 MS/s capture); the
   noise floor is local (`local_floor`, ~150 kHz blocks) so the filter roll-off does not hide the edges;
   narrow peaks above the threshold become candidates. Listen: on 1 MHz windows around the candidates.
@@ -112,6 +143,9 @@ detection, in en / fr / de / es. It ships standalone and inside two desktops by 
 - **Retention** (`settings["retention_days"]`, `RETENTION_DAYS` = 30, 0 = kept): `Store.purge` deletes the
   clips and recordings of detections last heard before the limit and clears their paths; the rows,
   statistics and transcripts stay. Once, at the window's start, in a thread: no watcher over the files.
+- **Banned by hand** (the bug button of a speech row, `FreqRules.ban`, `App.mark_parasite`): what the
+  speech test let through (data, a beacon); the frequency is banned like after `BAN_PARASITE` listens
+  (and taken off the whitelist), the row becomes `kind = 'parasite'`. Undone with Unban.
 - **Captures**: every kept signal, interference included, gets its 2.5 s WAV (`clips/<id>.wav`), so a
   false positive can be heard before whitelisting it. With `settings["preview_alert"]`, a new speech
   row plays a chime then its preview (`alert_audio`, `App.play_alert`, `DATA_DIR/alert.wav`), unless
@@ -261,6 +295,11 @@ change to the window** (layout, strings, colours) and look at every image before
 tools/screenshots.py          # → docs/screenshots/*.png (about 30 s)
 ```
 
+- gtk4-broadwayd sometimes aborts on an assertion of its own (`decode_nodes: assertion failed`, GTK 4.24,
+  about one run in four since the lists are paged; no real display is affected): the script starts a
+  fresh server and tries the theme again, three times at most.
+- `Gtk.WidgetPaintable` gives no picture (`to_node()` is None) of a window redrawn every 100 ms, e.g.
+  while a file plays: pause the timer (`play_timer`) for a second before the screenshot.
 - Needs `gtk4-broadwayd` (GTK's headless display: `gtk4` on Arch, `libgtk-4-bin` on Debian / Ubuntu).
   Nothing appears on screen, the size is fixed (1280 × 860 for `main`, 1280 × 1060 for the tabs), and an
   ArchangeSDR already running is not disturbed (its own application id).

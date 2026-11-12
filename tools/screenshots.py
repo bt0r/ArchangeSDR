@@ -157,7 +157,7 @@ def render(theme, outdir):
     shutil.rmtree(home, ignore_errors=True)
     app_dir = os.path.join(home, "app")
     os.makedirs(app_dir)
-    for d in ("lang", "ranges"):
+    for d in ("lang", "ranges", "icons"):
         shutil.copytree(os.path.join(ROOT, d), os.path.join(app_dir, d))
     src = open(os.path.join(ROOT, "archangesdr"), encoding="utf-8").read()
     # its own application id: an ArchangeSDR already running must not take the window
@@ -305,17 +305,25 @@ def main():
     broadway = shutil.which("gtk4-broadwayd") or shutil.which("broadwayd")
     if not broadway:
         raise SystemExit("gtk4-broadwayd not found (package gtk4 on Arch, libgtk-4-bin on Debian / Ubuntu)")
-    n = free_display()
-    server = subprocess.Popen([broadway, ":%d" % n], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
-    try:
-        time.sleep(1)
-        env = dict(os.environ, GDK_BACKEND="broadway", BROADWAY_DISPLAY=":%d" % n)
-        for theme in ("dark", "light"):
-            print(theme, flush=True)
-            subprocess.run([sys.executable, os.path.realpath(__file__), "--render", theme, outdir], env=env,
-                           timeout=120, check=True)
-    finally:
-        server.terminate()
+    for theme in ("dark", "light"):
+        print(theme, flush=True)
+        # gtk4-broadwayd sometimes aborts on an assertion of its own ("decode_nodes: assertion failed: (node
+        # != NULL)", GTK 4.24, about one run in four with the paged lists): a fresh server and another try
+        for attempt in range(3):
+            n = free_display()
+            server = subprocess.Popen([broadway, ":%d" % n], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+            try:
+                time.sleep(1)
+                env = dict(os.environ, GDK_BACKEND="broadway", BROADWAY_DISPLAY=":%d" % n)
+                if subprocess.run([sys.executable, os.path.realpath(__file__), "--render", theme, outdir], env=env,
+                                  timeout=120).returncode == 0:
+                    break
+                print("  the Broadway server failed, trying again", flush=True)
+            finally:
+                server.terminate()
+                server.wait()
+        else:
+            raise SystemExit("%s: the screenshots failed 3 times" % theme)
     print("written to", outdir)
 
 

@@ -69,6 +69,28 @@ class Retention(unittest.TestCase):
             self.a.save_settings(settings)
 
 
+class ManualBan(unittest.TestCase):
+    def test_ban(self):
+        """A frequency banned by hand: banned for the scan, off the whitelist, in the Interference tab."""
+        a = app()
+        tmp = tempfile.mkdtemp()
+        try:
+            store = a.Store(os.path.join(tmp, "scanner.db"))
+            rules = store.rules
+            rules.set_whitelisted(145.5e6, True, "2 m", "NFM")
+            rules.ban(145.5e6, "2 m", "NFM", "marked as interference")
+            self.assertTrue(rules.banned(145.5e6))
+            self.assertTrue(rules.banned(145.5e6 + 6250))           # the neighbouring key too
+            self.assertFalse(rules.whitelisted(145.5e6))
+            self.assertFalse(rules.banned(145.6e6))
+            row = store.q("SELECT label, mode, banned IS NOT NULL, whitelisted, reason FROM freq_rules")
+            self.assertEqual(row, [("2 m", "NFM", 1, None, "marked as interference")])
+            self.assertTrue(a.FreqRules(store).banned(145.5e6))      # kept across restarts
+            store.db.close()
+        finally:
+            shutil.rmtree(tmp, ignore_errors=True)
+
+
 class Squelch(unittest.TestCase):
     def setUp(self):
         self.a = app()

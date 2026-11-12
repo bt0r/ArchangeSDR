@@ -21,9 +21,9 @@ if [ "$1" = --uninstall ]; then
 fi
 
 mkdir -p "$APP" "$(dirname "$BIN")"
-rm -rf "$APP/lang" "$APP/ranges"
+rm -rf "$APP/lang" "$APP/ranges" "$APP/icons"
 install -m 755 archangesdr "$APP/archangesdr"
-cp -r lang ranges "$APP/"
+cp -r lang ranges icons "$APP/"
 ln -sf "$APP/archangesdr" "$BIN"
 ln -sf "$APP/archangesdr" "$OLD_BIN"
 # The former install goes; its data (if it ran standalone) moves at the first start of ArchangeSDR
