@@ -104,8 +104,18 @@ detection, in en / fr / de / es. It ships standalone and inside two desktops by 
   per detection row (`recordings/<id>.wav`); a conversation heard again within 2 min (the same row) is
   appended. The level is the gain of the first capture (no normalisation afterwards: it streams to
   disk).
+- **Squelch during a recording** (`settings["record_squelch"]`, off by default): off, the pauses (frames
+  under the threshold) are written as heard, and up to `REC_TAIL_S` = 1 s after the last transmission;
+  the recording starts with the capture ungated (`sig["audio_open"]`). On, they are zeros. Off is the
+  default because the threshold cut weak words mid-sentence: losing speech is worse than noise to clean
+  up afterwards. The preview (`sig["audio"]`) stays gated either way (FM noise would cover it).
+- **Retention** (`settings["retention_days"]`, `RETENTION_DAYS` = 30, 0 = kept): `Store.purge` deletes the
+  clips and recordings of detections last heard before the limit and clears their paths; the rows,
+  statistics and transcripts stay. Once, at the window's start, in a thread: no watcher over the files.
 - **Captures**: every kept signal, interference included, gets its 2.5 s WAV (`clips/<id>.wav`), so a
-  false positive can be heard before whitelisting it.
+  false positive can be heard before whitelisting it. With `settings["preview_alert"]`, a new speech
+  row plays a chime then its preview (`alert_audio`, `App.play_alert`, `DATA_DIR/alert.wav`), unless
+  something is already playing.
 - **FM broadcast** (WFM ranges): no speech test, the station finder works on the 100 kHz raster (so
   the 30 kHz OIRT band is not listed for Russia).
 
@@ -216,8 +226,9 @@ The dongle is not always plugged in; the tests need none.
   `test_detector.py` (synthetic scenes through survey and analyze: speech in NFM, AM, USB, LSB; music,
   carrier, wide signal, burst, noise, two speakers, FM stations; other sample rates; the detector's
   memory), `test_scanner.py` (the sweep plan and whole scans on fake receivers, recording included),
-  `test_soapy.py` (a fake SoapySDR module). `tests/support.py` has the speech generator (glottal
-  pulses, formants, syllables: invented, no real recording), the emitters, `Scene` and `FakeSdr`.
+  `test_soapy.py` (a fake SoapySDR module), `test_recordings.py` (retention, squelch, the alert's
+  chime). `tests/support.py` has the speech generator (glottal pulses, formants, syllables: invented,
+  no real recording), the emitters, `Scene` and `FakeSdr`.
 - The detector's numbers (score, SNR, frequency) are compared with `tests/baseline.json` within a margin.
   After a deliberate change of the processing: `python3 -m tests.test_detector --update-baseline`, then
   read the diff of the JSON. A verdict that changes is a regression, not a baseline to update.

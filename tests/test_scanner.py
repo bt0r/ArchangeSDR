@@ -108,9 +108,10 @@ class EndToEnd(unittest.TestCase):
         with wave.open(recording) as w:
             self.assertEqual(w.getframerate(), 2 * a.AUDIO_HALF_BW)
             seconds = w.getnframes() / w.getframerate()
-        # the talk lasts 6 s from the start of the scan; the survey and the listen took the first ~2.6 s
+        # the talk lasts 6 s from the start of the scan; the survey and the listen took the first ~2.6 s;
+        # without the squelch (the default) up to REC_TAIL_S after the last word is kept
         self.assertGreater(seconds, 2.0)
-        self.assertLess(seconds, 6.5)
+        self.assertLess(seconds, 6.5 + a.REC_TAIL_S)
         self.assertAlmostEqual(rec_s, seconds, delta=0.1)
         self.assertTrue(any(hit[1]["voice"] for hit in events["on_hit"]))
         self.assertTrue(events["on_record"][-1][-1])            # the recording was closed

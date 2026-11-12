@@ -246,6 +246,13 @@ RECORD_SILENCE_S = 20.0   # the recording ends after 20 s without a transmission
 RECORD_MAX_S = 900        # and after 15 min at most (a carrier that never drops, a repeater beacon...)
 RECORD_CHAN_HZ = 3_000    # channel power measured over ±3 kHz around the peak
 REC_GAP_S = 0.5           # silence between two recordings appended to the same conversation
+REC_TAIL_S = 1.0          # squelch off: kept after the last transmission (a last word under the threshold)
+RETENTION_DAYS = 30       # captures and recordings older than this are deleted at start (0: kept for good)
+
+# New-activity alert: a chime ("bing"), then the 2.5 s preview of the capture
+ALERT_TONE_HZ = 1320      # with its octave at a third of its level: a small bell
+ALERT_TONE_S = 0.45
+ALERT_GAP_S = 0.25        # between the chime and the preview
 
 # FM radio (WFM): no conversation to look for, we spot the stations that are on the air
 FM_RASTER = 100_000       # stations on the 100 kHz raster
@@ -272,6 +279,33 @@ def load_settings():
         return data if isinstance(data, dict) else {}
     except (OSError, ValueError):
         return {}
+
+
+def recording_conf():
+    """(retention in days (0: kept for good), squelch during recordings, new-activity alert): the Settings
+    tab's Recordings section. The squelch is off by default: a voice under the threshold is not cut."""
+    s = load_settings()
+    try:
+        days = max(0, int(s.get("retention_days", RETENTION_DAYS)))
+    except (TypeError, ValueError):
+        days = RETENTION_DAYS
+    return days, bool(s.get("record_squelch", False)), bool(s.get("preview_alert", False))
+
+
+def write_wav(path, audio, rate=2 * AUDIO_HALF_BW):
+    with wave.open(path, "wb") as w:
+        w.setnchannels(1)
+        w.setsampwidth(2)
+        w.setframerate(rate)
+        w.writeframes((np.clip(audio, -1, 1) * 32767).astype("<i2").tobytes())
+
+
+def alert_audio(preview, rate=2 * AUDIO_HALF_BW):
+    """The new-activity alert: a short chime, a pause, then the preview of the capture."""
+    t = np.arange(int(ALERT_TONE_S * rate)) / rate
+    bell = np.sin(2 * np.pi * ALERT_TONE_HZ * t) + np.sin(4 * np.pi * ALERT_TONE_HZ * t) / 3
+    bell *= 0.45 * np.exp(-t / (ALERT_TONE_S / 4)) * np.minimum(1, t / 0.005)    # 5 ms attack: no click
+    return np.concatenate([bell, np.zeros(int(ALERT_GAP_S * rate)), preview])
 
 
 def save_settings(data):
@@ -1409,11 +1443,16 @@ class Detector:
         stretches of speech would cover everything), to play back what triggered the detection."""
         rate = 2 * AUDIO_HALF_BW
         audio = demodulate(cap.channel(center), kind, rate)
-        gate = np.repeat(on_frames, int(FRAME_S * rate))[:len(audio)]
-        audio = audio[:len(gate)] * gate
-        peak = np.abs(audio).max()
+        step = int(FRAME_S * rate)
+        gate = np.repeat(on_frames, step)[:len(audio)]
+        audio = audio[:len(gate)]
+        peak = np.abs(audio * gate).max()
         sig["gain"] = 0.9 / peak if peak > 0 else 1.0      # the recording that follows keeps the same level
-        sig["audio"] = audio * sig["gain"]
+        sig["audio"] = audio * gate * sig["gain"]
+        # without the squelch, the recording starts with the capture as heard, pauses included, from the
+        # first transmission to the end of the last one
+        on = np.flatnonzero(on_frames)
+        sig["audio_open"] = (audio[on[0] * step:(on[-1] + 1) * step] if len(on) else audio) * sig["gain"]
 
     def _stations(self, iq, tuned, lo, hi, P, freqs, rate=FS):
         """FM radio stations: ±75 kHz channels on the 100 kHz raster, above the threshold during the whole
@@ -1570,13 +1609,38 @@ class Store:
         """Writes the capture of the detection did; returns its path."""
         os.makedirs(CLIPS_DIR, exist_ok=True)
         path = os.path.join(CLIPS_DIR, "%d.wav" % did)
-        with wave.open(path, "wb") as w:
-            w.setnchannels(1)
-            w.setsampwidth(2)
-            w.setframerate(rate)
-            w.writeframes((np.clip(audio, -1, 1) * 32767).astype("<i2").tobytes())
+        write_wav(path, audio, rate)
         self.q("UPDATE detections SET audio = ? WHERE id = ?", (path, did), True)
         return path
+
+    def purge(self, days):
+        """Deletes the captures and recordings of the detections last heard more than days days ago (0:
+        kept for good). The rows stay (history, statistics, transcripts). Returns the number of files
+        deleted. Run once at start: no thread watching the files' age."""
+        if days <= 0:
+            return 0
+        rows = self.q("SELECT id, audio, recording FROM detections WHERE last_seen < ? AND "
+                      "(audio IS NOT NULL OR recording IS NOT NULL)", (time.time() - days * 86400,))
+        gone, dids, clips = 0, [], []
+        for did, audio, recording in rows:
+            for path in (audio, recording):
+                try:
+                    if path:
+                        os.remove(path)
+                        gone += 1
+                except FileNotFoundError:
+                    pass
+                except OSError:
+                    break              # kept (permissions...): its path stays, it is tried again next time
+            else:
+                dids.append((did,))
+                clips.append((audio,))
+        with self.lock:
+            self.db.executemany("UPDATE detections SET audio = NULL, recording = NULL WHERE id = ?", dids)
+            self.db.executemany("UPDATE freq_rules SET audio = NULL WHERE audio = ?", clips)
+            self.db.executemany("DELETE FROM transcripts WHERE detection_id = ? AND status = 'pending'", dids)
+            self.db.commit()
+        return gone
 
     def save_recording(self, did, path, seconds):
         self.q("UPDATE detections SET recording = ?, rec_s = ? WHERE id = ?", (path, seconds, did), True)
@@ -1713,7 +1777,9 @@ class Recording:
         self.freq, self.kind = sig.get("center", sig["freq"]), sig["demod"] or "fm"
         self.peak, self.gain = sig.get("peak", sig["freq"]), sig.get("gain", 1.0)
         self.silent_s, self.live = 0.0, True
-        self.pending = 0            # silence not written yet (dropped if nothing follows)
+        self.squelch = recording_conf()[1]
+        self.pending = []           # the pause since the last transmission: written if one follows, dropped
+                                    # otherwise (zeros with the squelch, the audio as heard without it)
         os.makedirs(RECORDINGS_DIR, exist_ok=True)
         self.path = os.path.join(RECORDINGS_DIR, "%d.wav" % self.did)
         self.part = os.path.join(RECORDINGS_DIR, "%d.part.wav" % self.did)
@@ -1723,15 +1789,14 @@ class Recording:
         self.w.setframerate(self.RATE)
         self.frames = 0
         self.channel, self.last = None, None
-        self.write(np.trim_zeros(sig["audio"], "b"))
+        start = sig.get("audio_open")
+        self.write(np.trim_zeros(sig["audio"], "b") if self.squelch or start is None else start)
 
     def write(self, audio):
-        if self.pending:
-            self.w.writeframes(bytes(2 * self.pending))
-            self.frames += self.pending
-            self.pending = 0
-        self.w.writeframes((np.clip(audio, -1, 1) * 32767).astype("<i2").tobytes())
-        self.frames += len(audio)
+        for block in self.pending + [audio]:
+            self.w.writeframes((np.clip(block, -1, 1) * 32767).astype("<i2").tobytes())
+            self.frames += len(block)
+        self.pending = []
 
     def feed(self, iq, tuned, freqs, P, floor, rate=FS):
         """One block: iq its samples, P its spectrum frame by frame, floor the noise of each frame."""
@@ -1753,7 +1818,7 @@ class Recording:
                 self.write(audio[i * step:(i + 1) * step])
             else:
                 self.silent_s += FRAME_S
-                self.pending += step
+                self.pending.append(np.zeros(step) if self.squelch else audio[i * step:(i + 1) * step])
                 if self.silent_s >= RECORD_SILENCE_S:
                     self.live = False
                     break
@@ -1764,6 +1829,10 @@ class Recording:
 
     def close(self):
         self.live = False
+        if not self.squelch and self.pending:     # the end of the last word, if it was under the threshold
+            tail = np.concatenate(self.pending)[:int(REC_TAIL_S * self.RATE)]
+            self.pending = []
+            self.write(tail)
         self.w.close()
         if os.path.exists(self.path):     # the same conversation, heard again: appended
             with wave.open(self.path, "rb") as a, wave.open(self.part, "rb") as b:
@@ -3110,6 +3179,12 @@ def gui():
                 lambda: self.refresh_lists() and False))
             self.transcriber.start()
             self.refresh_lists()
+            threading.Thread(target=self.purge, daemon=True).start()
+
+        def purge(self):
+            """Retention: the old captures and recordings go once, at start (a thread: many files on an SD card)."""
+            if self.store.purge(recording_conf()[0]):
+                GLib.idle_add(lambda: self.refresh_lists() and False)
 
         # Construction --------------------------------------------------------------------------------
         @staticmethod
@@ -3661,7 +3736,22 @@ def gui():
                     body += " · " + next((d["label"] for d in self.scan_devs if d["id"] == dev), dev)
                 notify(title, body)
                 self.show_banner(title, body)
+                if sig["voice"] and sig.get("audio") is not None and recording_conf()[2]:
+                    self.play_alert(sig["audio"])
             self.refresh_lists()
+
+        def play_alert(self, preview):
+            """New activity: a chime, then its 2.5 s preview; nothing if something is already playing (never
+            cut what the user listens to, nor the alert of another receiver)."""
+            if self.player and self.player[0].poll() is None:
+                return
+            self.player = None
+            path = os.path.join(DATA_DIR, "alert.wav")
+            try:
+                write_wav(path, alert_audio(preview))
+            except OSError:
+                return
+            self.play_clip(path)
 
         def on_record(self, dev, band, lo, hi, spectrum, signals, recs, done):
             if done:
@@ -4516,6 +4606,25 @@ def gui():
                               if self.settings.get("stats_bucket", 5e3) in BUCKETS else 2)
             bucket.connect("notify::selected", lambda *_: self.stats_bucket.set_selected(bucket.get_selected()))
             line(T("L_SCN_SET_BUCKET"), bucket)
+
+            # Recordings
+            section(T("L_SCN_SET_REC"))
+            keep_box = Gtk.Box(spacing=8)
+            keep = Gtk.SpinButton.new_with_range(0, 3650, 1)
+            keep.set_value(recording_conf()[0])
+            keep.connect("value-changed", lambda w: self.save(retention_days=int(w.get_value())))
+            keep_box.append(keep)
+            keep_box.append(label(T("L_SCN_SET_REC_DAYS"), valign=Gtk.Align.CENTER))
+            line(T("L_SCN_SET_REC_KEEP"), keep_box)
+            hint(T("L_SCN_SET_REC_KEEP_HINT"))
+            squelch = Gtk.CheckButton(label=T("L_SCN_SET_REC_SQUELCH"), active=recording_conf()[1])
+            squelch.connect("toggled", lambda w: self.save(record_squelch=w.get_active()))
+            line("", squelch)
+            hint(T("L_SCN_SET_REC_SQUELCH_HINT"))
+            alert = Gtk.CheckButton(label=T("L_SCN_SET_REC_ALERT"), active=recording_conf()[2])
+            alert.connect("toggled", lambda w: self.save(preview_alert=w.get_active()))
+            line("", alert)
+            hint(T("L_SCN_SET_REC_ALERT_HINT"))
 
             # Join
             section(T("L_SCN_SET_JOIN"))

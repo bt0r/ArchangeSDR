@@ -29,6 +29,9 @@ that, which keeps it fast on a small ARM board.
   as it is clear (1 to 2.5 s).
 - **Speech, not noise**: AM, FM and SSB are tried; carriers, data, tones and wide signals are rejected.
 - **Whole conversations recorded**, pauses included, until 20 s of silence; a 2.5 s preview of each one.
+  No squelch by default during a recording: a weak voice is never cut (pauses keep their noise). An
+  optional chime plays the preview as soon as a new frequency talks. The audio is kept 30 days (your
+  choice), the log for good.
 - **Interference memory**: a frequency heard 3 times in a row without speech is banned for good; mark
   the false positives as "not interference".
 - **Several receivers** share the work, each taking first what only it can tune (HF on a Blog V4), never
@@ -129,7 +132,7 @@ archangesdr --bands                      # the configured ranges
 ```
 
 In the window: tick your receivers and your ranges, then **Scan**. Everything else (language, region,
-theme, Join program, notifications, transcription) is in the **Settings** tab. On a short screen, the
+theme, recordings, Join program, notifications, transcription) is in the **Settings** tab. On a short screen, the
 arrow under the scan cards folds their spectra away (the choice is kept). `SIGUSR1` pauses the scan
 and frees the receivers, for a launcher that needs them: `pkill -USR1 -f /archangesdr`.
 
@@ -178,7 +181,8 @@ moves to the new folders at the first start.
 ## Privacy and the law
 
 Your recordings stay on your computer, unless you choose a remote transcription API or ntfy
-attachments. Listening to the radio is legal or tolerated in most countries; disclosing or using what
+attachments. Previews and recordings older than 30 days are deleted when the app starts (**Settings →
+Recordings**, 0 keeps them for good); the log and the transcripts stay. Listening to the radio is legal or tolerated in most countries; disclosing or using what
 you hear often is not, and decrypting is never done. Check your local law: the last group of ranges of
 each region says how it treats listening.
 
