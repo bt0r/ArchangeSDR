@@ -117,9 +117,10 @@ def demo_history(a):
                                   "snr": snr, "occupancy": 0.71, "tx_s": 1.5, "width_khz": 7.0, "score": score,
                                   "features": [11.2, 0.46, 0.58, 0.41]})), True)
         clip = os.path.join(a.CLIPS_DIR, "%d.wav" % did)
-        rec = os.path.join(a.RECORDINGS_DIR, "%d.wav" % did)
+        rec = os.path.join(a.RECORDINGS_DIR, "%d_clean.wav" % did)
         tone(clip, 1.5 if k % 2 else 2.5, did)
         tone(rec, rec_s, did + 100)
+        shutil.copyfile(rec, os.path.join(a.RECORDINGS_DIR, "%d_raw.wav" % did))
         st.q("UPDATE detections SET audio = ?, recording = ?, rec_s = ? WHERE id = ?", (clip, rec, rec_s, did), True)
         st.request_transcript(did, None)
         if text:

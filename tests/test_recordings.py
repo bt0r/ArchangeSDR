@@ -1,5 +1,6 @@
 """Recordings: the retention (old audio deleted at start), the squelch during a recording (off: the pauses
-as heard, on: zeros) and the new-activity alert (a chime, then the preview)."""
+as heard, on: zeros), the two files of a recording (raw, and clean: voice band, NFM de-emphasis) and the
+new-activity alert (a chime, then the preview)."""
 import os
 import shutil
 import tempfile
@@ -40,6 +41,19 @@ class Retention(unittest.TestCase):
                            "score, kind, audio, recording, rec_s) VALUES (0, 145.5e6, 'NFM', '2 m', ?, ?, 1, 20, "
                            "1.5, 'voice', ?, ?, 1)", (seen, seen, paths[0], paths[1]), True)
         return did, paths
+
+    def test_purge_both_files(self):
+        """A recording is two files: the raw one, next to the clean one the row points to, goes too."""
+        clean = os.path.join(self.tmp, "7_clean.wav")
+        raw = os.path.join(self.tmp, "7_raw.wav")
+        for path in (clean, raw):
+            self.a.write_wav(path, np.zeros(STEP))
+        seen = time.time() - 40 * 86400
+        self.store.q("INSERT INTO detections (scan_id, freq, mode, label, first_seen, last_seen, hits, snr, score, "
+                     "kind, recording, rec_s) VALUES (0, 145.5e6, 'NFM', '2 m', ?, ?, 1, 20, 1.5, 'voice', ?, 1)",
+                     (seen, seen, clean), True)
+        self.assertEqual(self.store.purge(30), 2)
+        self.assertFalse(os.path.exists(clean) or os.path.exists(raw))
 
     def test_purge(self):
         old, old_paths = self.detection(40, "old")
@@ -117,7 +131,7 @@ class Squelch(unittest.TestCase):
         P = np.where(np.array(on, bool)[:, None], 1000.0, 1.0) * np.ones((len(on), len(freqs)))
         rec.feed(iq, 0.0, freqs, P, np.ones(len(on)), FS)
         rec.close()
-        return frames(rec.path)[STEP:]                # after the capture that started it
+        return frames(rec.raw)[STEP:]                 # after the capture that started it
 
     def test_pause(self):
         on = [1, 1, 0, 0, 0, 0, 0, 1, 1, 1]           # a pause longer than the hang time
@@ -133,6 +147,99 @@ class Squelch(unittest.TestCase):
         self.assertEqual(len(self.record(True, on)), 2 * STEP)             # the final silence goes
         self.assertEqual(len(self.record(False, on)), 2 * STEP + 8 * STEP)  # up to REC_TAIL_S of it stays
         self.assertEqual(self.a.REC_TAIL_S, 1.0)
+
+
+class Clean(unittest.TestCase):
+    """Each recording is written twice: <id>_raw.wav as demodulated, <id>_clean.wav through the voice band
+    (300 - 3000 Hz) and, in NFM, the de-emphasis. Same length, aligned; the log plays the clean one, the
+    transcription takes the raw one (whisper-cli does worse on the filtered audio)."""
+
+    def setUp(self):
+        self.a = app()
+        self.tmp = tempfile.mkdtemp()
+        self.store = self.a.Store(os.path.join(self.tmp, "scanner.db"))
+        self.settings, self.dir = self.a.load_settings(), self.a.RECORDINGS_DIR
+        self.a.RECORDINGS_DIR = self.tmp
+        self.a.save_settings({"record_squelch": False})
+
+    def tearDown(self):
+        self.a.save_settings(self.settings)
+        self.a.RECORDINGS_DIR = self.dir
+        self.store.db.close()
+        shutil.rmtree(self.tmp, ignore_errors=True)
+
+    def record(self, did, audio, demod="am"):
+        """A recording made of the capture's audio alone (no block fed after it)."""
+        sig = {"id": did, "freq": 0.0, "demod": demod, "gain": 1.0, "audio": audio, "audio_open": audio}
+        rec = self.a.Recording(self.store, sig, 10)
+        rec.close()
+        return rec
+
+    @staticmethod
+    def tone(hz, seconds=1.0, level=0.5):
+        return level * np.sin(2 * np.pi * hz * np.arange(int(seconds * RATE)) / RATE)
+
+    @staticmethod
+    def level_db(x):
+        x = x[RATE // 5:-RATE // 5]                           # away from the edges
+        return 10 * np.log10(np.mean(x.astype(float) ** 2) + 1e-12)
+
+    def test_two_files(self):
+        rec = self.record(1, self.tone(1000))
+        self.assertEqual(rec.path, os.path.join(self.tmp, "1_clean.wav"))
+        self.assertEqual(rec.raw, os.path.join(self.tmp, "1_raw.wav"))
+        raw, clean = frames(rec.raw), frames(rec.path)
+        self.assertEqual(len(raw), RATE)
+        self.assertEqual(len(clean), len(raw))
+        self.assertEqual(sorted(os.listdir(self.tmp)), ["1_clean.wav", "1_raw.wav", "scanner.db"])
+
+    def test_voice_band(self):
+        for hz, kept in ((100, False), (1000, True), (2000, True), (6000, False)):
+            raw = frames(self.record(hz, self.tone(hz)).raw)
+            clean = frames(self.record(hz + 1, self.tone(hz)).path)
+            drop = self.level_db(raw) - self.level_db(clean)
+            if kept:
+                self.assertLess(abs(drop), 1.5, hz)
+            else:
+                self.assertGreater(drop, 20, hz)
+
+    def test_aligned(self):
+        """The FIR's delay is taken off: a click is at the same place in both files."""
+        x = np.zeros(RATE)
+        x[RATE // 2] = 0.9
+        rec = self.record(1, x)
+        self.assertEqual(np.argmax(np.abs(frames(rec.path))), np.argmax(np.abs(frames(rec.raw))))
+
+    def test_nfm_deemphasis(self):
+        """FM is transmitted with its treble raised: the clean NFM file brings 2.5 kHz down, AM keeps it."""
+        am = self.level_db(frames(self.record(1, self.tone(2500)).path))
+        fm = self.level_db(frames(self.record(2, self.tone(2500), "fm").path))
+        self.assertGreater(am - fm, 6)
+        self.assertLess(abs(self.level_db(frames(self.record(3, self.tone(1000), "fm").path)) -
+                            self.level_db(frames(self.record(4, self.tone(1000)).path))), 1.5)
+
+    def test_appended(self):
+        """A conversation heard again is appended to both files, which stay the same length."""
+        self.record(1, self.tone(1000))
+        rec = self.record(1, self.tone(1000))
+        self.assertEqual(len(frames(rec.path)), len(frames(rec.raw)))
+        self.assertEqual(len(frames(rec.raw)), 2 * RATE + int(self.a.REC_GAP_S * RATE))
+
+    def test_older_recording(self):
+        """A recording made before the clean copy (<id>.wav) heard again: it becomes the start of both."""
+        old = os.path.join(self.tmp, "1.wav")
+        self.a.write_wav(old, self.tone(1000))
+        rec = self.record(1, self.tone(1000))
+        self.assertFalse(os.path.exists(old))
+        self.assertEqual(len(frames(rec.path)), len(frames(rec.raw)))
+        self.assertEqual(len(frames(rec.raw)), 2 * RATE + int(self.a.REC_GAP_S * RATE))
+
+    def test_raw_for_transcription(self):
+        rec = self.record(1, self.tone(1000))
+        self.assertEqual(self.a.raw_recording(rec.path), rec.raw)
+        old = os.path.join(self.tmp, "9.wav")                   # an older recording: its only file
+        self.assertEqual(self.a.raw_recording(old), old)
+        self.assertIsNone(self.a.raw_recording(None))
 
 
 class Alert(unittest.TestCase):

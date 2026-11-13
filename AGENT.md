@@ -131,10 +131,17 @@ detection, in en / fr / de / es. It ships standalone and inside two desktops by 
   Frequencies are matched on a 6.25 kHz key, ±1 key.
 - **Recording** (`Recording`, `Scanner.follow`): after a capture with speech the scan stays on the
   window and records each conversation heard there until `RECORD_SILENCE_S` = 20 s without a
-  transmission, `RECORD_MAX_S` = 15 min at most. Pauses are kept, the final silence is not. One file
-  per detection row (`recordings/<id>.wav`); a conversation heard again within 2 min (the same row) is
-  appended. The level is the gain of the first capture (no normalisation afterwards: it streams to
-  disk).
+  transmission, `RECORD_MAX_S` = 15 min at most. Pauses are kept, the final silence is not. Two files
+  per detection row, same length, aligned: `recordings/<id>_raw.wav` as demodulated and
+  `<id>_clean.wav` (the row's `recording`, played in the log and sent by ntfy); a conversation heard
+  again within 2 min (the same row) is appended to both (an older `<id>.wav` becomes the start of both).
+  The level is the gain of the first capture (no normalisation afterwards: it streams to disk).
+- **Clean copy** (`CleanFilter`, `clean_kernel`): a 511-tap FIR band-pass 300 - 3000 Hz, plus the NFM
+  de-emphasis (750 us) on FM, fed at `Recording.write` so the pauses dropped at the end never reach it;
+  its delay is taken off. Tried on uConsole recordings (2026-11): ~4 dB less hiss in NFM, nothing in AM
+  (the noise is in the voice band); whisper-cli did worse on it (a call sign misread, sentences lost),
+  so the transcription takes the raw file (`raw_recording`). A soft squelch (pauses at -12 dB) was
+  tried too and refused by ear. ~18 ms per second of audio on a CM4. Retention deletes both files.
 - **Squelch during a recording** (`settings["record_squelch"]`, off by default): off, the pauses (frames
   under the threshold) are written as heard, and up to `REC_TAIL_S` = 1 s after the last transmission;
   the recording starts with the capture ungated (`sig["audio_open"]`). On, they are zeros. Off is the

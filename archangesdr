@@ -253,6 +253,14 @@ RECORD_CHAN_HZ = 3_000    # channel power measured over ±3 kHz around the peak
 REC_GAP_S = 0.5           # silence between two recordings appended to the same conversation
 REC_TAIL_S = 1.0          # squelch off: kept after the last transmission (a last word under the threshold)
 RETENTION_DAYS = 30       # captures and recordings older than this are deleted at start (0: kept for good)
+# Each recording is written twice: <id>_raw.wav as demodulated (the transcription takes it: whisper-cli
+# did worse on the filtered audio, a call sign misread) and <id>_clean.wav for listening: the voice band
+# only (the FM hiss above 3 kHz, the AM rumble below 300 Hz go: ~4 dB less hiss in NFM, measured on
+# uConsole recordings) and, in NFM, the de-emphasis the transmitters expect (their treble is raised)
+CLEAN_LO_HZ = 300
+CLEAN_HI_HZ = 3000
+CLEAN_TAPS = 511          # FIR length: a 300 Hz edge needs ~30 ms of it; ~5 ms per second of audio on a PC
+NFM_DEEMPH_US = 750       # the narrowband FM de-emphasis time constant
 
 # New-activity alert: a chime ("bing"), then the 2.5 s preview of the capture
 ALERT_TONE_HZ = 1320      # with its octave at a third of its level: a small bell
@@ -297,12 +305,77 @@ def recording_conf():
     return days, bool(s.get("record_squelch", False)), bool(s.get("preview_alert", False))
 
 
+def pcm16(audio):
+    return (np.clip(audio, -1, 1) * 32767).astype("<i2").tobytes()
+
+
 def write_wav(path, audio, rate=2 * AUDIO_HALF_BW):
     with wave.open(path, "wb") as w:
         w.setnchannels(1)
         w.setsampwidth(2)
         w.setframerate(rate)
-        w.writeframes((np.clip(audio, -1, 1) * 32767).astype("<i2").tobytes())
+        w.writeframes(pcm16(audio))
+
+
+def clean_kernel(rate, fm):
+    """FIR of the clean recording: windowed-sinc band-pass CLEAN_LO_HZ - CLEAN_HI_HZ, convolved in FM with
+    the de-emphasis (one pole, as a truncated exponential); 1 at 1 kHz, so the voice keeps its level."""
+    n = np.arange(CLEAN_TAPS) - (CLEAN_TAPS - 1) / 2
+    h = (2 * CLEAN_HI_HZ / rate * np.sinc(2 * CLEAN_HI_HZ / rate * n) -
+         2 * CLEAN_LO_HZ / rate * np.sinc(2 * CLEAN_LO_HZ / rate * n)) * np.blackman(CLEAN_TAPS)
+    if fm:
+        tau = NFM_DEEMPH_US * 1e-6 * rate
+        e = np.exp(-np.arange(int(6 * tau) + 1) / tau)
+        h = np.convolve(h, e / e.sum())
+    at_1k = np.abs(np.sum(h * np.exp(-2j * np.pi * 1000 / rate * np.arange(len(h)))))
+    return h / at_1k
+
+
+class CleanFilter:
+    """clean_kernel block by block, its state carried over; the FIR's delay is taken off (the first
+    samples out are dropped, flush() gives the last ones), so the clean file lines up with the raw one."""
+
+    def __init__(self, rate, fm):
+        self.h = clean_kernel(rate, fm)
+        self.tail = np.zeros(len(self.h) - 1)
+        self.skip = self.delay = (len(self.h) - 1) // 2
+
+    def feed(self, x):
+        if not len(x):
+            return np.zeros(0)
+        buf = np.concatenate([self.tail, x])
+        y = np.convolve(buf, self.h, mode="valid")
+        self.tail = buf[len(buf) - len(self.tail):]
+        drop = min(self.skip, len(y))
+        self.skip -= drop
+        return y[drop:]
+
+    def flush(self):
+        return self.feed(np.zeros(self.delay))
+
+
+def raw_recording(path):
+    """The unfiltered file next to a clean recording, for the transcription; an older recording (<id>.wav)
+    is its own raw file."""
+    if path and path.endswith("_clean.wav"):
+        raw = path[:-len("_clean.wav")] + "_raw.wav"
+        if os.path.exists(raw):
+            return raw
+    return path
+
+
+def append_wav(path, part, gap_s, rate):
+    """part added at the end of path, after gap_s of silence (a conversation heard again); part removed."""
+    with wave.open(path, "rb") as a, wave.open(part, "rb") as b:
+        old, new = a.readframes(a.getnframes()), b.readframes(b.getnframes())
+    tmp = path + ".tmp"
+    with wave.open(tmp, "wb") as w:
+        w.setnchannels(1)
+        w.setsampwidth(2)
+        w.setframerate(rate)
+        w.writeframes(old + bytes(2 * int(gap_s * rate)) + new)
+    os.replace(tmp, path)
+    os.remove(part)
 
 
 def alert_audio(preview, rate=2 * AUDIO_HALF_BW):
@@ -1628,7 +1701,8 @@ class Store:
                       "(audio IS NOT NULL OR recording IS NOT NULL)", (time.time() - days * 86400,))
         gone, dids, clips = 0, [], []
         for did, audio, recording in rows:
-            for path in (audio, recording):
+            raw = raw_recording(recording)
+            for path in (audio, recording, raw if raw != recording else None):
                 try:
                     if path:
                         os.remove(path)
@@ -1796,12 +1870,18 @@ class Recording:
         self.pending = []           # the pause since the last transmission: written if one follows, dropped
                                     # otherwise (zeros with the squelch, the audio as heard without it)
         os.makedirs(RECORDINGS_DIR, exist_ok=True)
-        self.path = os.path.join(RECORDINGS_DIR, "%d.wav" % self.did)
-        self.part = os.path.join(RECORDINGS_DIR, "%d.part.wav" % self.did)
-        self.w = wave.open(self.part, "wb")
-        self.w.setnchannels(1)
-        self.w.setsampwidth(2)
-        self.w.setframerate(self.RATE)
+        base = os.path.join(RECORDINGS_DIR, "%d" % self.did)
+        self.path, self.raw = base + "_clean.wav", base + "_raw.wav"     # the row points to the clean one
+        self.legacy = base + ".wav"                                       # a recording made before the clean copy
+        self.parts = (base + "_raw.part.wav", base + "_clean.part.wav")
+        self.writers = []
+        for part in self.parts:
+            w = wave.open(part, "wb")
+            w.setnchannels(1)
+            w.setsampwidth(2)
+            w.setframerate(self.RATE)
+            self.writers.append(w)
+        self.clean = CleanFilter(self.RATE, self.kind == "fm")
         self.frames = 0
         self.channel, self.last = None, None
         start = sig.get("audio_open")
@@ -1809,7 +1889,8 @@ class Recording:
 
     def write(self, audio):
         for block in self.pending + [audio]:
-            self.w.writeframes((np.clip(block, -1, 1) * 32767).astype("<i2").tobytes())
+            self.writers[0].writeframes(pcm16(block))
+            self.writers[1].writeframes(pcm16(self.clean.feed(block)))
             self.frames += len(block)
         self.pending = []
 
@@ -1848,20 +1929,18 @@ class Recording:
             tail = np.concatenate(self.pending)[:int(REC_TAIL_S * self.RATE)]
             self.pending = []
             self.write(tail)
-        self.w.close()
-        if os.path.exists(self.path):     # the same conversation, heard again: appended
-            with wave.open(self.path, "rb") as a, wave.open(self.part, "rb") as b:
-                old, new = a.readframes(a.getnframes()), b.readframes(b.getnframes())
-            tmp = self.path + ".tmp"
-            with wave.open(tmp, "wb") as w:
-                w.setnchannels(1)
-                w.setsampwidth(2)
-                w.setframerate(self.RATE)
-                w.writeframes(old + bytes(2 * int(REC_GAP_S * self.RATE)) + new)
-            os.replace(tmp, self.path)
-            os.remove(self.part)
-        else:
-            os.replace(self.part, self.path)
+        self.writers[1].writeframes(pcm16(self.clean.flush()))
+        for w in self.writers:
+            w.close()
+        if os.path.exists(self.legacy) and not os.path.exists(self.raw):
+            # heard again right after an update: the older file starts both (unfiltered, as it was)
+            shutil.copyfile(self.legacy, self.path)
+            os.replace(self.legacy, self.raw)
+        for path, part in ((self.raw, self.parts[0]), (self.path, self.parts[1])):
+            if os.path.exists(path):     # the same conversation, heard again: appended
+                append_wav(path, part, REC_GAP_S, self.RATE)
+            else:
+                os.replace(part, path)
         with wave.open(self.path, "rb") as w:
             total = w.getnframes() / self.RATE
         self.store.save_recording(self.did, self.path, total)
@@ -2060,6 +2139,7 @@ class Transcriber(threading.Thread):
                 self.wake.clear()
                 continue
             did, lang, path = job
+            path = raw_recording(path)        # whisper-cli does better on the unfiltered audio
             try:
                 with wave.open(path, "rb") as w:
                     seconds = w.getnframes() / w.getframerate()
@@ -5259,7 +5339,7 @@ def gui():
         def test_transcription(self, result):
             rows = self.store.q("SELECT recording FROM detections WHERE recording IS NOT NULL ORDER BY last_seen "
                                 "DESC LIMIT 20")
-            path = next((r[0] for r in rows if os.path.exists(r[0])), None)
+            path = next((raw_recording(r[0]) for r in rows if os.path.exists(r[0])), None)
             if not path:
                 result.set_text(T("L_SCN_SET_TR_TEST_NONE"))
                 return

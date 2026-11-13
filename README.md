@@ -29,7 +29,9 @@ that, which keeps it fast on a small ARM board.
   as it is clear (1 to 2.5 s).
 - **Speech, not noise**: AM, FM and SSB are tried; carriers, data, tones and wide signals are rejected.
 - **Whole conversations recorded**, pauses included, until 20 s of silence; a 2.5 s preview of each one.
-  No squelch by default during a recording: a weak voice is never cut (pauses keep their noise). An
+  No squelch by default during a recording: a weak voice is never cut (pauses keep their noise). Each
+  recording is kept twice: as received (`<id>_raw.wav`, what the transcription uses) and cleaned for
+  listening (`<id>_clean.wav`: voice band only, NFM de-emphasis), which the log plays. An
   optional chime plays the preview as soon as a new frequency talks. The audio is kept 30 days (your
   choice), the log for good.
 - **Interference memory**: a frequency heard 3 times in a row without speech is banned for good; mark
