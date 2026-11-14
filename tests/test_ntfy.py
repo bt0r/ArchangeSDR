@@ -1,10 +1,12 @@
 """ntfy attachments: the recording in MP3 when it fits under ntfy.sh's free limit, else its preview; the
-WAV when no encoder is installed; always the clean audio. A local HTTP server stands for ntfy (nothing leaves the machine)."""
+WAV when no encoder is installed; always the clean audio; one notification per capture, once it is over.
+A local HTTP server stands for ntfy (nothing leaves the machine)."""
 import http.server
 import os
 import shutil
 import tempfile
 import threading
+import time
 import unittest
 import wave
 
@@ -129,6 +131,86 @@ class Attachment(unittest.TestCase):
         tone, hiss = (hz > 400) & (hz < 480), hz > 4000
         self.assertAlmostEqual(10 * np.log10(p1[tone].sum() / p0[tone].sum()), 0, delta=1.5)
         self.assertLess(10 * np.log10(p1[hiss].sum() / p0[hiss].sum()), -20)
+
+
+
+class OncePerCapture(unittest.TestCase):
+    """A conversation recorded in several parts (the replies, appended to the same file) is notified
+    once, after the last part, with the whole recording; a part being recorded holds it back; the end of
+    the scan sends what waits."""
+
+    def setUp(self):
+        self.a = app()
+        self.sent, self.real = [], self.a.notify_recording
+        self.a.notify_recording = lambda store, did: self.sent.append((did, time.time()))
+        self.q = self.a.NtfyQueue(delay=0.3)
+
+    def tearDown(self):
+        self.a.notify_recording = self.real
+
+    def settle(self, s=0.6):
+        time.sleep(s)
+        self.q.wait(2)
+
+    def test_parts_of_one_capture(self):
+        for _ in range(3):                  # three parts in a row, each within the hold of the previous
+            self.q.started(7)
+            self.q.closed(None, 7)
+            time.sleep(0.1)
+        self.assertEqual(self.sent, [])
+        self.settle()
+        self.assertEqual([d for d, _ in self.sent], [7])
+
+    def test_part_being_recorded(self):
+        self.q.started(7)
+        self.q.closed(None, 7)
+        self.q.started(7)                   # a reply: nothing goes while it is recorded
+        self.settle()
+        self.assertEqual(self.sent, [])
+        self.q.closed(None, 7)
+        self.settle()
+        self.assertEqual([d for d, _ in self.sent], [7])
+
+    def test_captures_apart(self):
+        self.q.started(7)
+        self.q.closed(None, 7)
+        self.q.started(8)
+        self.q.closed(None, 8)
+        self.settle()
+        self.assertEqual(sorted(d for d, _ in self.sent), [7, 8])
+
+    def test_end_of_scan(self):
+        q = self.a.NtfyQueue(delay=60)
+        q.started(7)
+        q.closed(None, 7)
+        q.flush()
+        q.wait(2)
+        self.assertEqual([d for d, _ in self.sent], [7])
+        q.flush()                           # nothing left: no second sending
+        q.wait(2)
+        self.assertEqual(len(self.sent), 1)
+
+    def test_recording_queues(self):
+        """A Recording tells the queue when a part starts and ends, and sends nothing itself."""
+        calls = []
+
+        class Fake:
+            def started(self, did):
+                calls.append(("started", did))
+
+            def closed(self, store, did):
+                calls.append(("closed", did))
+
+        real, self.a.NTFY_QUEUE = self.a.NTFY_QUEUE, Fake()
+        try:
+            store = self.a.Store()
+            for _ in range(2):              # the capture, then a reply appended to the same file
+                sig = {"id": 4242, "freq": 446.1e6, "demod": "fm", "audio": np.full(8000, 0.1)}
+                self.a.Recording(store, sig, 6.0).close()
+        finally:
+            self.a.NTFY_QUEUE = real
+        self.assertEqual(calls, [("started", 4242), ("closed", 4242)] * 2)
+        self.assertEqual(self.sent, [])
 
 
 if __name__ == "__main__":

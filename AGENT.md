@@ -227,7 +227,12 @@ because the strings and `CONF` are read at import.
   `RTL_FM_COMMAND`) and the user's commands (`settings["join"]["commands"]`, ids `cmd:<n>`): templates
   filled by `fill_template` (every value `shlex.quote`d, unknown `<name>` left as is) and run with
   `sh -c` in their own process group; `stop_joined` kills that group when the scan resumes.
-- ntfy: `notify_recording` runs in a thread when a `Recording` closes; `ntfy_wanted` applies the
+- ntfy: one notification per capture, once it is over. A detection row takes the replies heard within
+  `ACTIVE_HOLD_S` (each appended to the same recording), so `Recording` tells `NTFY_QUEUE` when a part
+  starts and closes; the queue sends `ACTIVE_HOLD_S` after the last part closes (a new part cancels the
+  wait), or at once on `Store.end_scan`, and the app waits for the sendings before it quits or restarts.
+  Never send from `Recording.close` directly: a 2 min conversation was notified 7 times.
+  `notify_recording` runs in a thread; `ntfy_wanted` applies the
   conditions; `ntfy_send` POSTs the message (title and tags as query parameters, UTF-8 safe) or PUTs the
   attachment with `filename`/`message` parameters; the token goes in `Authorization: Bearer`, never in the
   URL. Settings in `settings["ntfy"]`. In the Settings tab the topic, token, conditions and attachment show only once

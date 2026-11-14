@@ -44,7 +44,8 @@ that, which keeps it fast on a small ARM board.
 - **Transcription** (optional), searchable: whisper.cpp on the machine itself, or any OpenAI-compatible
   API.
 - **Push notifications** to your phone through [ntfy](https://ntfy.sh), for every recording or only
-  some (score, frequencies).
+  some (score, frequencies): one per conversation, sent once it is over (2 min without a reply, or the
+  end of the scan) with the whole recording.
 - **Statistics**: which frequency is the busiest, the most interfered, which dongle hears what best.
 - **Default ranges for 16 regions** (Europe, the Americas, Japan, China, Russia, Australia), in English,
   French, German and Spanish. Dark and light themes.

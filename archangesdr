@@ -1603,6 +1603,7 @@ class Store:
     def end_scan(self, scan_id, passes, windows, error=None):
         self.q("UPDATE scans SET ended = ?, passes = ?, windows = ?, error = ? WHERE id = ?",
                (time.time(), passes, windows, error, scan_id), True)
+        NTFY_QUEUE.flush()       # no more replies can join this scan's captures: their notifications go now
 
     def progress(self, scan_id, passes, windows):
         self.q("UPDATE scans SET passes = ?, windows = ? WHERE id = ?", (passes, windows, scan_id), True)
@@ -1810,6 +1811,7 @@ class Recording:
 
     def __init__(self, store, sig, threshold):
         self.store, self.did, self.threshold = store, sig["id"], threshold
+        NTFY_QUEUE.started(self.did)
         self.freq, self.kind = sig.get("center", sig["freq"]), sig["demod"] or "fm"
         self.peak, self.gain = sig.get("peak", sig["freq"]), sig.get("gain", 1.0)
         self.silent_s, self.live = 0.0, True
@@ -1893,7 +1895,7 @@ class Recording:
         self.store.save_recording(self.did, self.path, total)
         if transcription_conf().get("auto", True) and transcription_conf().get("engine", "off") != "off":
             self.store.request_transcript(self.did)
-        threading.Thread(target=notify_recording, args=(self.store, self.did), daemon=True).start()
+        NTFY_QUEUE.closed(self.store, self.did)     # sent once the conversation is over, not per part
         return total
 
 
@@ -2785,6 +2787,72 @@ def notify_recording(store, did):
         shutil.rmtree(tmp, ignore_errors=True)
 
 
+class NtfyQueue:
+    """One notification per capture, once it is over. A detection row takes the speech heard on its
+    frequency within ACTIVE_HOLD_S of the last one (the replies), each part appended to the same
+    recording: the notification waits ACTIVE_HOLD_S after the last part is closed (a part that starts
+    meanwhile cancels the wait), or goes at the end of the scan, when no part can join any more."""
+
+    def __init__(self, delay=ACTIVE_HOLD_S):
+        self.delay, self.lock = delay, threading.Lock()
+        self.waiting = {}       # did: (generation, timer, store)
+        self.recording = set()  # dids with a part being recorded
+        self.gen = 0
+        self.sending = []       # the sending threads (the program waits for them before it exits)
+
+    def started(self, did):
+        with self.lock:
+            self.recording.add(did)
+            item = self.waiting.pop(did, None)
+        if item:
+            item[1].cancel()
+
+    def closed(self, store, did):
+        with self.lock:
+            self.gen += 1
+            timer = threading.Timer(self.delay, self._due, (did, self.gen))
+            timer.daemon = True
+            self.recording.discard(did)
+            old = self.waiting.get(did)
+            self.waiting[did] = (self.gen, timer, store)
+        if old:
+            old[1].cancel()
+        timer.start()
+
+    def _due(self, did, gen):
+        with self.lock:
+            item = self.waiting.get(did)
+            if not item or item[0] != gen or did in self.recording:
+                return              # replaced by a newer part, or a part is being recorded
+            del self.waiting[did]
+        self._send(item[2], did)
+
+    def flush(self):
+        """End of the scan: what waits goes now."""
+        with self.lock:
+            items, self.waiting = self.waiting, {}
+        for did, (_, timer, store) in items.items():
+            timer.cancel()
+            self._send(store, did)
+
+    def _send(self, store, did):
+        th = threading.Thread(target=notify_recording, args=(store, did), daemon=True)
+        with self.lock:
+            self.sending = [t for t in self.sending if t.is_alive()] + [th]
+        th.start()
+
+    def wait(self, timeout=40):
+        """Before the program exits or restarts: the sendings under way finish (30 s timeout each)."""
+        end = time.time() + timeout
+        with self.lock:
+            threads = list(self.sending)
+        for th in threads:
+            th.join(max(0.0, end - time.time()))
+
+
+NTFY_QUEUE = NtfyQueue()
+
+
 # --- Terminal mode -------------------------------------------------------------------------------
 
 def cli(args):
@@ -2848,6 +2916,8 @@ def cli(args):
     while any(sc.is_alive() for sc in scanners):
         for sc in scanners:
             sc.join(0.2)
+    NTFY_QUEUE.flush()
+    NTFY_QUEUE.wait()
 
 
 # --- GTK interface -------------------------------------------------------------------------------
@@ -5307,6 +5377,8 @@ def gui():
             if self.state is not None and not self.running():
                 self.store.end_scan(self.state.scan_id, self.state.passes, self.state.done)
             self.stop_clip()
+            NTFY_QUEUE.flush()
+            NTFY_QUEUE.wait()
             # the name it was started with (sdrscanner, the former name, stays sdrscanner)
             os.execv(sys.executable, [sys.executable, os.path.abspath(ARGV[0])] + ARGV[1:])
 
@@ -5378,6 +5450,8 @@ def gui():
                     sc.join(3)
             elif self.state is not None:
                 self.store.end_scan(self.state.scan_id, self.state.passes, self.state.done)
+            NTFY_QUEUE.flush()   # a capture still waiting for its replies goes before the app quits
+            NTFY_QUEUE.wait()
             Gtk.Application.do_shutdown(self)
 
     App().run([sys.argv[0]])
