@@ -239,6 +239,9 @@ because the strings and `CONF` are read at import.
   15 MB was its paid / self-hosted figure), else the 2.5 s preview, with a note in the message. Without
   an encoder the WAV goes (about a minute fits). The MP3 is a temporary file: the stored files stay WAV
   (playback, whisper-cli and the appended recordings need it).
+  What goes is always clean audio: the row's `_clean.wav` as it is; the preview and a recording made
+  before the clean copy (`<id>.wav`) are filtered first (`clean_copy`, into the temporary folder, same
+  name; de-emphasis when the row's mode is NFM / FM).
 
 ## Files and profiles
 

@@ -354,6 +354,20 @@ class CleanFilter:
         return self.feed(np.zeros(self.delay))
 
 
+def clean_copy(path, out, fm):
+    """The WAV at path through the clean filter, written to out (for the files kept unfiltered: the
+    previews, the recordings made before the clean copy). Returns out, or None if path cannot be read."""
+    try:
+        with wave.open(path, "rb") as w:
+            rate = w.getframerate()
+            x = np.frombuffer(w.readframes(w.getnframes()), "<i2") / 32767
+        f = CleanFilter(rate, fm)
+        write_wav(out, np.concatenate([f.feed(x), f.flush()]), rate)
+        return out
+    except (OSError, EOFError, wave.Error, ValueError):
+        return None
+
+
 def raw_recording(path):
     """The unfiltered file next to a clean recording, for the transcription; an older recording (<id>.wav)
     is its own raw file."""
@@ -2797,12 +2811,16 @@ def to_mp3(wav, out):
     return None
 
 
-def ntfy_attachment(recording, preview, tmp, name):
+def ntfy_attachment(recording, preview, tmp, name, fm=True):
     """(file, is_preview) to attach: the whole recording if it fits in NTFY_MAX_ATTACH, else its preview;
-    in MP3 when an encoder is there (a fifth of the WAV's size), else the WAV. (None, False) if none fits."""
+    always the clean audio (a preview or an older recording is filtered into tmp first); in MP3 when an
+    encoder is there (a fifth of the WAV's size), else the WAV. (None, False) if none fits."""
     for path, is_preview in ((recording, False), (preview, True)):
         if not path or not os.path.exists(path):
             continue
+        if not path.endswith("_clean.wav"):
+            os.makedirs(os.path.join(tmp, "clean"), exist_ok=True)      # same name, so the phone shows it
+            path = clean_copy(path, os.path.join(tmp, "clean", os.path.basename(path)), fm) or path
         mp3 = to_mp3(path, os.path.join(tmp, "%s%s.mp3" % (name, "-preview" if is_preview else "")))
         f = mp3 or path
         if os.path.getsize(f) < NTFY_MAX_ATTACH:
@@ -2830,7 +2848,7 @@ def notify_recording(store, did):
                 dev.get("label") or dev.get("name") or device or "RTL-SDR", fmt_time(time.time(), CLOCK_FMT))
     tmp = tempfile.mkdtemp(prefix="archangesdr-ntfy-")
     try:
-        attach, is_preview = ntfy_attachment(recording, preview, tmp, did) if conf.get("attach") else (None, False)
+        attach, is_preview = ntfy_attachment(recording, preview, tmp, did, mode in ("NFM", "FM")) if conf.get("attach") else (None, False)
         if is_preview:
             message += "\n" + T("L_SCN_NTFY_PREVIEW", NTFY_MAX_ATTACH // 1_000_000)
         ntfy_send(conf, "%s · %s" % (fmt_mhz(freq), lbl or mode), message, attach)
