@@ -19,7 +19,7 @@ _APP = []
 
 
 def app():
-    """archangesdr as a module, loaded once per test run. The program reads its profile, settings and
+    """archangesdr as a module, loaded once per test run. The program reads its settings and
     language at import: they come from a temporary home, so the user's history is never touched."""
     if _APP:
         return _APP[0]
@@ -27,7 +27,7 @@ def app():
     atexit.register(shutil.rmtree, home, True)
     os.environ.update({"XDG_CONFIG_HOME": os.path.join(home, "config"),
                        "XDG_DATA_HOME": os.path.join(home, "data"),
-                       "ARCHANGESDR_PROFILE": "standalone", "SCANNER_LANG": "en", "SCANNER_REGION": "eu",
+                       "SCANNER_LANG": "en", "SCANNER_REGION": "eu",
                        "LANG": "C"})
     # ARCHANGESDR_PROGRAM: test another copy of the program (an installed one, a modified one)
     path = os.environ.get("ARCHANGESDR_PROGRAM") or os.path.join(ROOT, "archangesdr")

@@ -6,16 +6,15 @@ the why and the conventions.
 ## What it is
 
 Formerly SDRScanner (renamed 2026-11). `sdrscanner` stays a command (a symlink made by install.sh):
-archSDR's `radio-menu` and waybar call it and pause the scan with `pkill -USR1 -f "/sdrscanner( |$)"`,
-so `restart()` re-executes the name it was started with. `migrate_old_name` moves the standalone
-folders and rewrites the paths stored in the history; `SDRSCANNER_PROFILE` is still read. The `L_SCN_`
-string keys keep their prefix (the desktops' scripts share them).
+launchers written for the old name still call it and pause the scan with `pkill -USR1 -f "/sdrscanner( |$)"`,
+so `restart()` re-executes the name it was started with. `migrate_old_name` moves the old folders and
+rewrites the paths stored in the history. The string keys keep their `L_SCN_` prefix.
 
 An SDR conversation scanner (RTL-SDR dongles, other receivers through SoapySDR): it sweeps frequency
 ranges and lists the frequencies where someone is **talking** (plus the FM stations on the air), with a
 2.5 s capture and a recording of the whole conversation. A GTK 4 window, a `--cli` mode for tuning the
-detection, in en / fr / de / es. It ships standalone and inside two desktops by the same author: archSDR
-(Hyprland) and uBonsole (i3 on the ClockworkPi uConsole, an ARM handheld running Debian).
+detection, in en / fr / de / es. It is a standalone program: it depends on no desktop or other project,
+and keeps its files in its own folders (see Files below).
 
 ## Architecture decisions (keep them)
 
@@ -177,8 +176,7 @@ detection, in en / fr / de / es. It ships standalone and inside two desktops by 
   `ScanState.lock`. The last receiver thread out closes the scan (`end_scan`) or keeps it for a resume.
 - `ScanState` survives a pause ("Join" frees every dongle and opens GQRX on the one that heard the
   frequency, SIGUSR1 frees them for another app); new `Scanner`s carry on with the least visited hops.
-- **Receivers** (`list_devices`, `receivers`, the profile's devices file, e.g.
-  `~/.config/archangesdr/devices.json`): id = serial number, or `serial#index` when two dongles share it;
+- **Receivers** (`list_devices`, `receivers`, `DEVICES` = `~/.config/archangesdr/devices.json`): id = serial number, or `serial#index` when two dongles share it;
   per receiver: enabled, label, gain, hf (None = automatic), tuner and name learned at the first
   opening. `detections.device` stores the id (the Statistics tab filters on it; rows merge per receiver).
 - `Store` (SQLite, one connection, a lock) is shared by the window and the scanner. Schema changes are
@@ -220,7 +218,7 @@ because the strings and `CONF` are read at import.
   only when the user clicks Install; `WHISPER_DEFAULT` is base.
 - `clean_transcript` drops Whisper's hallucinations on noise (subtitle credits, a phrase repeated);
   recordings under `TRANSCRIBE_MIN_S` are not sent.
-- Settings live in the profile's settings file (`load_settings` / `save_settings`, mode 600: it holds
+- Settings live in `SETTINGS` (`load_settings` / `save_settings`, mode 600: it holds
   API keys). Never log or display a key; error messages carry the HTTP code and the server's text only.
 
 ## Join and notifications
@@ -243,18 +241,20 @@ because the strings and `CONF` are read at import.
   before the clean copy (`<id>.wav`) are filtered first (`clean_copy`, into the temporary folder, same
   name; de-emphasis when the row's mode is NFM / FM).
 
-## Files and profiles
+## Files
 
-- The **profile** (`ubonsole`, `archsdr`, `standalone`) decides where settings, ranges and data live,
-  so the scanner reuses the files of the desktop it runs in. Do not move these paths: the desktops'
-  scripts read them.
-- `lang/<lang>.sh`: UI strings in **bash syntax** (`L_KEY='value'`, a quote is `'\''`), shared with the
-  desktops' shell scripts. `en.sh` is the fallback. **Every new string goes into the four files.**
+- One set of paths, no profiles: `CONF_DIR` = `~/.config/archangesdr/` (`archangesdr.conf`, optional,
+  bash `KEY=value`; `ranges.json`, `devices.json`, `settings.json`) and `DATA_DIR` =
+  `~/.local/share/archangesdr/` (history, recordings, models), both under `XDG_CONFIG_HOME` /
+  `XDG_DATA_HOME`. Language, region, accent and theme are the user's choice in the Settings tab; the
+  program reads nothing from a desktop's or another project's files.
+- `lang/<lang>.sh`: UI strings in **bash syntax** (`L_KEY='value'`, a quote is `'\''`). `en.sh` is the
+  fallback. **Every new string goes into the four files.**
   Plurals are `KEY_1` / `KEY_N` through `P()`. Check: every `T("L_...")` key exists in each language.
 - `ranges/<region>/<lang>.json`: default ranges, a list of `{label, lo_mhz, hi_mhz, mode, section,
-  enabled}`; mode is one of AM, NFM, FM, USB, LSB, WFM. `eu fr uk de es us ca` come from uBonsole's
-  `tools/gen-frequencies.py` (edit them there); `br ar cl co sa jp cn ru au` come from
-  `tools/gen-ranges.py` here (edit the script, then run it; never hand-edit its output).
+  enabled}`; mode is one of AM, NFM, FM, USB, LSB, WFM. `eu fr uk de es us ca` are maintained by hand
+  here (edit the JSON of every language of the region); `br ar cl co sa jp cn ru au` come from
+  `tools/gen-ranges.py` (edit the script, then run it; never hand-edit its output).
   Rules: analog voice only (no digital voice, no data), never a "do not listen" range (police,
   emergency services, mobile phones), HF and > 20 MHz ranges unticked, the last section states how the
   region treats listening. Each region's sources are in the comments of `tools/gen-ranges.py`.
@@ -281,8 +281,8 @@ The dongle is not always plugged in; the tests need none.
 - `archangesdr --cli 144-146 --passes 2` with a dongle: every signal, its criteria and the verdict.
 - Without a dongle: load the file as a module (`importlib.machinery.SourceFileLoader`), give a
   `Scanner` a fake SDR object (`tune`, `read` returning complex64 IQ at 2.4 MS/s) and call
-  `scanner.listen(...)`. Point `XDG_DATA_HOME` / `XDG_CONFIG_HOME` at a temporary folder and pass
-  `--profile standalone` so the user's history is never touched.
+  `scanner.listen(...)`. Point `XDG_DATA_HOME` / `XDG_CONFIG_HOME` at a temporary folder so the user's
+  history is never touched.
 - The window: GTK keeps **one instance per application id**. If the user's ArchangeSDR is running,
   launching `./archangesdr` only raises their window and your code never runs. Test a copy with another
   `application_id` (`sed 's/io.github.bt0r.archangesdr/io.github.bt0r.archangesdrtest/'`). A harness that

@@ -167,7 +167,7 @@ def render(theme, outdir):
     open(path, "w", encoding="utf-8").write(src)
     os.environ.update(XDG_CONFIG_HOME=os.path.join(home, "config"), XDG_DATA_HOME=os.path.join(home, "data"),
                       SCANNER_LANG="en", SCANNER_REGION="eu", GDK_DEBUG="no-portals")
-    sys.argv = [path, "--profile", "standalone"]
+    sys.argv = [path]
     loader = importlib.machinery.SourceFileLoader("archangesdr", path)
     a = importlib.util.module_from_spec(importlib.util.spec_from_loader("archangesdr", loader))
     loader.exec_module(a)

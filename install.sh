@@ -1,7 +1,7 @@
 #!/bin/bash
 # Installs ArchangeSDR for the current user: the program, its translations and default ranges in
 # ~/.local/share/archangesdr/app, the command ~/.local/bin/archangesdr, and ~/.local/bin/sdrscanner (its
-# former name, which the archSDR and uBonsole menus call). Run as your user:
+# former name). Run as your user:
 #   ./install.sh               install or update
 #   ./install.sh --uninstall   remove the program (settings, ranges and history stay)
 set -e

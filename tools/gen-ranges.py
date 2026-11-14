@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Writes ranges/<region>/<lang>.json for the regions defined here (Japan, China, Russia, Australia,
-South America). The European and North American files (eu, fr, uk, de, es, us, ca) come from uBonsole's
-tools/gen-frequencies.py and are not touched.
+South America). The European and North American files (eu, fr, uk, de, es, us, ca) are maintained by
+hand in ranges/ and are not touched.
 
     tools/gen-ranges.py            write every region below
     tools/gen-ranges.py jp au      only these

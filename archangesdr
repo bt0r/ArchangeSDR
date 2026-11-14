@@ -2,28 +2,22 @@
 """ArchangeSDR: sweeps frequency ranges with SDR receivers (RTL-SDR dongles, others through SoapySDR) and
 reports those where someone is talking (and, on FM radio, the stations that are on the air).
 
-    archangesdr [--profile P]                GTK window (scan, detection log, statistics, settings)
+    archangesdr                              GTK window (scan, detection log, statistics, settings)
     archangesdr --cli 144-146 [--passes N]   same detection in the terminal (tests, tuning)
     archangesdr --bands                      configured ranges
 
-The program was called SDRScanner: `sdrscanner` stays a command for it (the desktops' menus call it) and
-its standalone folders move to the new name at the first start.
+The program was called SDRScanner: `sdrscanner` stays a command for it and its old folders move to the
+new name at the first start.
 
-Profiles (--profile, ARCHANGESDR_PROFILE, else detected) keep the files of the desktop it runs in:
-    ubonsole    uBonsole (i3, uConsole): ~/.config/i3/ubonsole.conf, ranges ~/.config/i3/scanner-ranges.json,
-                defaults from ~/.config/i3/frequencies/<region>/<lang>.json, data ~/.local/share/ubonsole
-    archsdr     archSDR (Hyprland): ~/.config/radio-menu/radio.conf, ranges
-                ~/.config/radio-menu/scanner-ranges.json, data ~/.local/share/radio-menu
-    standalone  ~/.config/archangesdr/archangesdr.conf, ranges ~/.config/archangesdr/ranges.json,
-                data ~/.local/share/archangesdr
-Settings in that file (bash KEY=value): SDR_DEVICE (index or serial), SDR_GAIN (dB), the language
-(UBONSOLE_LANG, RADIO_LANG or SCANNER_LANG: en, fr, de, es), the region (UBONSOLE_REGION, RADIO_REGION
-or SCANNER_REGION: a folder of ranges/: eu, fr, uk, de, es, us, ca, br, ar, cl, co, sa, jp, cn, ru, au)
-and, under Hyprland, RADIO_WS (workspace GQRX opens on).
+Files: settings in ~/.config/archangesdr/ (archangesdr.conf, ranges.json, devices.json, settings.json),
+history and recordings in ~/.local/share/archangesdr/ (XDG_CONFIG_HOME and XDG_DATA_HOME are followed).
+archangesdr.conf (bash KEY=value, optional): SDR_DEVICE (index or serial), SDR_GAIN (dB), SCANNER_LANG
+(en, fr, de, es) and SCANNER_REGION (a folder of ranges/: eu, fr, uk, de, es, us, ca, br, ar, cl, co, sa,
+jp, cn, ru, au); the Settings tab overrides the language and the region.
 
 Ranges are editable in the app; the first start copies the defaults of the region and language (the
 voice ranges of the region's frequency sheet, AM, NFM, FM, USB, LSB, and FM radio; never the "do not
-listen" ranges), from the desktop's own files when it has them, else from ranges/ next to the program.
+listen" ranges) from ranges/ next to the program.
 
 Two-step sweep: survey in 2.06 MHz hops (0.1 s each, 90 % of the width the dongle captures), then a
 progressive listen (1 to 2.5 s, as soon as the verdict is clear) only where a narrow peak showed up; a
@@ -73,54 +67,11 @@ def _locale_lang():
     return lang if lang in LANGS else "en"
 
 
-def _locale_region():
-    """The region of the system locale (fr_FR -> fr, en_GB -> uk, es_PE -> sa), else Europe. archSDR's
-    radio-menu (common.sh) maps it the same way, so the menu and the scanner agree."""
-    cc = re.sub(r"^[a-z]+_([A-Za-z]{2}).*$", r"\1", os.environ.get("LANG") or "").lower()
-    if cc == "gb":
-        return "uk"
-    if cc in ("bo", "ec", "pe", "py", "uy", "ve"):
-        return "sa"
-    return cc if cc in ("ar", "au", "br", "ca", "cl", "cn", "co", "de", "es", "fr", "jp", "ru", "us") else "eu"
-
-
-# Where each desktop keeps its files; the scanner reuses them so its history and ranges stay in place
-PROFILES = {
-    "ubonsole": dict(conf=os.path.join(_CONFIG, "i3", "ubonsole.conf"),
-                     lang_key="UBONSOLE_LANG", region_key="UBONSOLE_REGION", lang="en", region="eu",
-                     ranges=os.path.join(_CONFIG, "i3", "scanner-ranges.json"),
-                     devices=os.path.join(_CONFIG, "i3", "scanner-devices.json"),
-                     settings=os.path.join(_CONFIG, "i3", "scanner-settings.json"),
-                     defaults=os.path.join(_CONFIG, "i3", "frequencies"),
-                     data=os.path.join(_DATA, "ubonsole"),
-                     accent=(os.path.join(_CONFIG, "i3", "scripts", "rofi-theme.rasi"),
-                             r"accent:\s*#([0-9a-fA-F]{6})", "E09AB4")),
-    "archsdr": dict(conf=os.path.join(_CONFIG, "radio-menu", "radio.conf"),
-                    lang_key="RADIO_LANG", region_key="RADIO_REGION", lang=_locale_lang(), region=_locale_region(),
-                    ws="8",
-                    ranges=os.path.join(_CONFIG, "radio-menu", "scanner-ranges.json"),
-                    devices=os.path.join(_CONFIG, "radio-menu", "scanner-devices.json"),
-                    settings=os.path.join(_CONFIG, "radio-menu", "scanner-settings.json"),
-                    defaults=None,
-                    data=os.path.join(_DATA, "radio-menu"),
-                    accent=(os.path.join(_CONFIG, "rofi", "theme.rasi"),
-                            r"select-bg:\s*#([0-9a-fA-F]{6})", "C4A7E7")),
-    "standalone": dict(conf=os.path.join(_CONFIG, "archangesdr", "archangesdr.conf"),
-                       lang_key="SCANNER_LANG", region_key="SCANNER_REGION", lang=_locale_lang(), region="eu",
-                       ranges=os.path.join(_CONFIG, "archangesdr", "ranges.json"),
-                       devices=os.path.join(_CONFIG, "archangesdr", "devices.json"),
-                       settings=os.path.join(_CONFIG, "archangesdr", "settings.json"),
-                       defaults=None,
-                       data=os.path.join(_DATA, "archangesdr"),
-                       accent=(None, None, "C4A7E7")),
-}
-
-
 def migrate_old_name():
     """The program was called SDRScanner: its standalone folders (~/.config/sdrscanner,
     ~/.local/share/sdrscanner) move to the new name, item by item (install.sh has already created
     ~/.local/share/archangesdr/app; the old app/ is install.sh's to remove), and the paths written in the
-    history and the settings follow. Nothing to do once moved, or for the desktop profiles."""
+    history and the settings follow. Nothing to do once moved."""
     moves = ((os.path.join(_CONFIG, "sdrscanner"), os.path.join(_CONFIG, "archangesdr")),
              (os.path.join(_DATA, "sdrscanner"), os.path.join(_DATA, "archangesdr")))
     for old, new in moves:
@@ -165,31 +116,14 @@ def migrate_old_name():
         pass
 
 
-def pick_profile(argv):
-    """--profile P, else ARCHANGESDR_PROFILE (or the former SDRSCANNER_PROFILE), else the desktop whose
-    settings file exists."""
-    if "--profile" in argv:
-        i = argv.index("--profile")
-        name = argv[i + 1] if i + 1 < len(argv) else ""
-        del argv[i:i + 2]
-    else:
-        name = os.environ.get("ARCHANGESDR_PROFILE") or os.environ.get("SDRSCANNER_PROFILE", "")
-    if name not in PROFILES:
-        name = "ubonsole" if os.path.isfile(PROFILES["ubonsole"]["conf"]) else \
-            "archsdr" if os.path.isdir(os.path.dirname(PROFILES["archsdr"]["conf"])) else "standalone"
-    return name
-
-
 ARGV = list(sys.argv)                          # as launched (a restart passes it again)
-PROFILE_NAME = pick_profile(sys.argv)
-if PROFILE_NAME == "standalone":
-    migrate_old_name()
-PROFILE = PROFILES[PROFILE_NAME]
-CONF_DIR = os.path.dirname(PROFILE["conf"])
-RANGES = PROFILE["ranges"]                     # scanner ranges, editable in the app
-DEVICES = PROFILE["devices"]                   # receivers: which ones scan, their name, gain, HF
-SETTINGS = PROFILE["settings"]                 # what the Settings tab changes (language, theme, transcription...)
-DATA_DIR = PROFILE["data"]
+migrate_old_name()
+CONF_DIR = os.path.join(_CONFIG, "archangesdr")
+CONF_FILE = os.path.join(CONF_DIR, "archangesdr.conf")   # optional, bash KEY=value (see the top of this file)
+RANGES = os.path.join(CONF_DIR, "ranges.json")             # scanner ranges, editable in the app
+DEVICES = os.path.join(CONF_DIR, "devices.json")           # receivers: which ones scan, their name, gain, HF
+SETTINGS = os.path.join(CONF_DIR, "settings.json")         # what the Settings tab changes (language, theme...)
+DATA_DIR = os.path.join(_DATA, "archangesdr")
 DB_PATH = os.path.join(DATA_DIR, "scanner.db")
 CLIPS_DIR = os.path.join(DATA_DIR, "clips")     # the audio of the captures that triggered a detection
 RECORDINGS_DIR = os.path.join(DATA_DIR, "recordings")   # the whole conversations that followed them
@@ -285,8 +219,8 @@ DEFAULT_ACCENT = "E09AB4"   # pink
 
 
 def load_settings():
-    """The app's own settings (the Settings tab). They override the language and region of the desktop's
-    file, which the app never writes. API keys live here too: the file is readable by its owner only."""
+    """The app's own settings (the Settings tab). They override the language and region of
+    archangesdr.conf, which the app never writes. API keys live here too: the file is readable by its owner only."""
     try:
         data = json.load(open(SETTINGS, encoding="utf-8"))
         return data if isinstance(data, dict) else {}
@@ -410,20 +344,20 @@ def save_settings(data):
 
 
 def read_conf():
-    """Settings of the profile's file (bash KEY=value); the environment fills in a setting the file does
-    not set. LANG and REGION are the profile's language and region keys, read under their own names."""
-    keys = {"SDR_DEVICE": "0", "SDR_GAIN": "40", "SDR_ASYNC": "1", "RADIO_WS": PROFILE.get("ws", ""),
-            PROFILE["lang_key"]: PROFILE["lang"], PROFILE["region_key"]: PROFILE["region"]}
+    """Settings of archangesdr.conf (bash KEY=value); the environment fills in a setting the file does
+    not set. LANG and REGION come from SCANNER_LANG and SCANNER_REGION."""
+    keys = {"SDR_DEVICE": "0", "SDR_GAIN": "40", "SDR_ASYNC": "1",
+            "SCANNER_LANG": _locale_lang(), "SCANNER_REGION": "eu"}
     conf = {k: os.environ.get(k) or v for k, v in keys.items()}
     try:
-        for line in open(PROFILE["conf"]):
+        for line in open(CONF_FILE):
             m = re.match(r"\s*([A-Z_]+)=[\"']?([^\"'#\s]*)", line)
             if m and m.group(1) in conf and m.group(2):
                 conf[m.group(1)] = m.group(2)
     except OSError:
         pass
-    conf["LANG"] = conf[PROFILE["lang_key"]] if conf[PROFILE["lang_key"]] in LANGS else "en"
-    conf["REGION"] = conf[PROFILE["region_key"]]
+    conf["LANG"] = conf["SCANNER_LANG"] if conf["SCANNER_LANG"] in LANGS else "en"
+    conf["REGION"] = conf["SCANNER_REGION"]
     app = load_settings()
     if app.get("lang") in LANGS:
         conf["LANG"] = app["lang"]
@@ -544,12 +478,11 @@ class Band:
 
 
 def default_ranges_paths(region=None, lang=None):
-    """Default ranges files, best first: the desktop's own (uBonsole generates them with its frequency
-    sheets), then ranges/ next to the program; each as <region>/<lang>, <region>/en, eu/<lang>, eu/en."""
+    """Default ranges files (ranges/ next to the program), best first: <region>/<lang>, <region>/en,
+    eu/<lang>, eu/en."""
     region, lang = region or CONF["REGION"], lang or CONF["LANG"]
-    dirs = [d for d in (PROFILE["defaults"], os.path.join(APP_DIR, "ranges")) if d]
-    return [os.path.join(d, f + ".json") for d in dirs
-            for f in ("%s/%s" % (region, lang), "%s/en" % region, "eu/%s" % lang, "eu/en")]
+    d = os.path.join(APP_DIR, "ranges")
+    return [os.path.join(d, f + ".json") for f in ("%s/%s" % (region, lang), "%s/en" % region, "eu/%s" % lang, "eu/en")]
 
 
 def default_ranges_path():
@@ -557,13 +490,13 @@ def default_ranges_path():
 
 
 def regions():
-    """The regions that have default ranges (folders of ranges/ and of the desktop's sheets)."""
-    dirs = [d for d in (PROFILE["defaults"], os.path.join(APP_DIR, "ranges")) if d and os.path.isdir(d)]
-    return sorted({r for d in dirs for r in os.listdir(d) if os.path.isdir(os.path.join(d, r))})
+    """The regions that have default ranges (the folders of ranges/)."""
+    d = os.path.join(APP_DIR, "ranges")
+    return sorted(r for r in os.listdir(d) if os.path.isdir(os.path.join(d, r))) if os.path.isdir(d) else []
 
 
 def load_default_ranges(region=None, lang=None):
-    """Default ranges of the region and language (generated with the frequency sheets); [] if missing."""
+    """Default ranges of the region and language (ranges/ next to the program); [] if missing."""
     for path in default_ranges_paths(region, lang):
         try:
             return [Band.from_dict(d) for d in json.load(open(path, encoding="utf-8"))]
@@ -573,7 +506,7 @@ def load_default_ranges(region=None, lang=None):
 
 
 def load_ranges():
-    """Scanner ranges of the profile, copied from the default ranges on first start."""
+    """Scanner ranges, copied from the default ranges on first start."""
     try:
         return [Band.from_dict(d) for d in json.load(open(RANGES, encoding="utf-8"))]
     except (OSError, ValueError, KeyError, TypeError):
@@ -2619,7 +2552,7 @@ def open_gqrx(freq, mode, device=None):
         if run_quiet(["pgrep", "-x", "gqrx"]):
             break
         time.sleep(0.2)
-    if not launch(["gqrx", "-c", path], conf["RADIO_WS"]):
+    if not launch(["gqrx", "-c", path]):
         return False
 
     # The file sets the frequency and the filter; the remote control (port 7356) sets the mode and
@@ -2648,18 +2581,11 @@ def run_quiet(argv):
         return 127
 
 
-def launch(argv, workspace=""):
-    """Starts a program detached. Under Hyprland with RADIO_WS set, on that workspace (archSDR); under
-    i3, the desktop's own rules place it (uBonsole assigns gqrx to the radio workspace)."""
-    import shutil
+def launch(argv):
+    """Starts a program detached (the window manager places its window). False if it is not installed."""
     if not shutil.which(argv[0]):
         return False
-    if workspace and os.environ.get("HYPRLAND_INSTANCE_SIGNATURE") and shutil.which("hyprctl"):
-        cmd = " ".join("'%s'" % a.replace("'", "'\\''") for a in argv)
-        subprocess.run(["hyprctl", "dispatch", 'hl.dsp.exec_cmd([==[%s]==], {workspace="%s"})' % (cmd, workspace)],
-                       stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
-    else:
-        subprocess.Popen(argv, start_new_session=True, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+    subprocess.Popen(argv, start_new_session=True, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
     return True
 
 
@@ -2717,7 +2643,7 @@ def run_command(command):
 
 def open_sdrpp(freq, mode):
     """SDR++ started, then tuned through its Rigctl Server (127.0.0.1:4532) once it answers."""
-    if not launch(["sdrpp"], read_conf()["RADIO_WS"]):
+    if not launch(["sdrpp"]):
         return False
     name, width = RIGCTL_MODES.get(mode, RIGCTL_MODES["NFM"])
 
@@ -2992,14 +2918,6 @@ def gui():
 
     def scrolled(**kw):
         return Gtk.ScrolledWindow(overlay_scrolling=False, **kw)
-
-    path, pattern, _ = PROFILE["accent"]   # the desktop's accent color (rofi theme), one of the choices
-    desktop_accent = None
-    try:
-        m = re.search(pattern, open(path).read()) if path else None
-        desktop_accent = m.group(1) if m else None
-    except OSError:
-        pass
 
     UI_LANGS = {"en": "English", "fr": "Français", "de": "Deutsch", "es": "Español"}
     LANG_LABELS = {"en": "English", "fr": "Français", "de": "Deutsch", "es": "Español", "it": "Italiano",
@@ -3281,8 +3199,6 @@ def gui():
             mode = self.settings.get("accent_mode", "pink")
             if mode == "custom" and re.fullmatch(r"[0-9A-Fa-f]{6}", self.settings.get("accent", "")):
                 return self.settings["accent"]
-            if mode == "desktop" and desktop_accent:
-                return desktop_accent
             return DEFAULT_ACCENT
 
         def is_dark(self):
@@ -4939,9 +4855,8 @@ def gui():
 
             # Look
             section(T("L_SCN_SET_LOOK"))
-            modes = ["pink", "desktop", "custom"] if desktop_accent else ["pink", "custom"]
-            names = {"pink": T("L_SCN_SET_ACCENT_PINK"), "desktop": T("L_SCN_SET_ACCENT_DESKTOP"),
-                     "custom": T("L_SCN_SET_ACCENT_CUSTOM")}
+            modes = ["pink", "custom"]
+            names = {"pink": T("L_SCN_SET_ACCENT_PINK"), "custom": T("L_SCN_SET_ACCENT_CUSTOM")}
             mode = self.settings.get("accent_mode", "pink")
             accent = dropdown([names[m] for m in modes], modes.index(mode) if mode in modes else 0)
             picker = color_button(self.settings.get("accent") or DEFAULT_ACCENT,
@@ -5392,7 +5307,7 @@ def gui():
             if self.state is not None and not self.running():
                 self.store.end_scan(self.state.scan_id, self.state.passes, self.state.done)
             self.stop_clip()
-            # the name it was started with (sdrscanner for the desktops' menus: their pkill looks for it)
+            # the name it was started with (sdrscanner, the former name, stays sdrscanner)
             os.execv(sys.executable, [sys.executable, os.path.abspath(ARGV[0])] + ARGV[1:])
 
         # Spectrum of the current window --------------------------------------------------------------

@@ -142,8 +142,8 @@ text stays in the tooltip). Scrollbars are always shown, not only when the point
 or Listen button shows the progress of its playback. `SIGUSR1` pauses the scan
 and frees the receivers, for a launcher that needs them: `pkill -USR1 -f /archangesdr`.
 
-A few settings live in a plain `KEY=value` file (`~/.config/archangesdr/archangesdr.conf` for the
-standalone profile): `SDR_DEVICE` (the dongle ticked at the first start), `SDR_GAIN` (dB, 40 by default;
+A few settings live in an optional plain `KEY=value` file (`~/.config/archangesdr/archangesdr.conf`):
+`SDR_DEVICE` (the dongle ticked at the first start), `SDR_GAIN` (dB, 40 by default;
 each dongle's own gain is set in the window), `SDR_ASYNC=0` (blocking USB reads, for a librtlsdr that
 cannot stream), `SCANNER_LANG`, `SCANNER_REGION`.
 
@@ -166,23 +166,18 @@ outside the Americas, walkie-talkies use PMR446 in Europe, FRS in the Americas, 
 Only analog voice is listed: digital voice, data and the services that must not be listened to (police,
 emergency services, mobile phones) are left out.
 
-## Desktops
+## Files
 
-ArchangeSDR runs on its own, and fits in two setups by the same author, whose files it reuses:
-[archSDR](https://github.com/bt0r/archSDR) (Hyprland) and [uBonsole](https://github.com/bt0r/uBonsole)
-(i3 on the uConsole). The profile is detected, or forced with `--profile archsdr|ubonsole|standalone`.
+| What | Where |
+|---|---|
+| Settings, ranges, receivers | `~/.config/archangesdr/` |
+| History, recordings, transcription models | `~/.local/share/archangesdr/` |
 
-| Profile | Settings | History and recordings |
-|---|---|---|
-| `standalone` | `~/.config/archangesdr/` | `~/.local/share/archangesdr/` |
-| `archsdr` | `~/.config/radio-menu/` | `~/.local/share/radio-menu/` |
-| `ubonsole` | `~/.config/i3/` | `~/.local/share/ubonsole/` |
+`XDG_CONFIG_HOME` and `XDG_DATA_HOME` are followed. The language, region, accent colour and theme are
+chosen in the Settings tab (the language defaults to the system's, the region to Europe).
 
-Under archSDR, the language and region are the menu's: `RADIO_LANG` and `RADIO_REGION` in
-`~/.config/radio-menu/radio.conf`, else the system locale (the Settings tab still overrides them).
-
-The project was called SDRScanner: `sdrscanner` stays a command for it, and an old standalone history
-moves to the new folders at the first start.
+The project was called SDRScanner: `sdrscanner` stays a command for it, and an old history moves to the
+new folders at the first start.
 
 ## Privacy and the law
 
