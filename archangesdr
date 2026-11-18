@@ -2070,6 +2070,9 @@ def transcribe(path, lang=None, conf=None):
     raise RuntimeError(T("L_SCN_TR_ERR_OFF"))
 
 
+TRANSCRIBING = threading.Event()    # a Transcriber runs (the window; not --cli): worth waiting for a transcript
+
+
 class Transcriber(threading.Thread):
     """Transcribes the queued recordings one at a time, in the background (the engine of the moment's
     settings); on_done(detection id) after each one."""
@@ -2081,6 +2084,13 @@ class Transcriber(threading.Thread):
         self.stopped = False
 
     def run(self):
+        TRANSCRIBING.set()
+        try:
+            self.work()
+        finally:
+            TRANSCRIBING.clear()
+
+    def work(self):
         while not self.stopped:
             job = self.store.next_transcript() if transcription_conf().get("engine", "off") != "off" else None
             if job is None:
@@ -2668,6 +2678,8 @@ def open_sdrpp(freq, mode):
 
 NTFY_MAX_ATTACH = 2_000_000      # bytes: ntfy.sh's attachment limit on its free plan
 MP3_KBPS = 32                    # kbit/s for the attachments: clear speech at 16 kHz mono, ~8 min in 2 MB
+NTFY_TRANSCRIPT_WAIT_S = 180     # a notification waits this long at most for its transcript (queued or running)
+NTFY_TRANSCRIPT_MAX = 1000       # characters of transcript in the message (it rides in the URL with an attachment)
 
 
 def ntfy_conf():
@@ -2757,6 +2769,26 @@ def ntfy_attachment(recording, preview, tmp, name, fm=True):
 
 
 NTFY_LAST = {}    # the last sending: {"time", "error"} (shown in the settings)
+NTFY_HURRY = threading.Event()   # set when the program quits: a notification stops waiting for its transcript
+
+
+def ntfy_transcript(store, did, wait=None):
+    """The transcript of detection did for its notification, cut at NTFY_TRANSCRIPT_MAX characters; None
+    if there is none. While it is queued or running and a Transcriber works, waits for it (at most wait
+    seconds, NTFY_TRANSCRIPT_WAIT_S by default; not at all once NTFY_HURRY is set)."""
+    end = time.time() + (NTFY_TRANSCRIPT_WAIT_S if wait is None else wait)
+    while True:
+        rows = store.q("SELECT status, text FROM transcripts WHERE detection_id = ?", (did,))
+        status, text = rows[0] if rows else (None, None)
+        if (status not in ("pending", "running") or not TRANSCRIBING.is_set() or time.time() >= end
+                or transcription_conf().get("engine", "off") == "off"):
+            break
+        if NTFY_HURRY.wait(min(1.0, max(0.0, end - time.time()))):
+            break
+    text = " ".join((text or "").split()) if status == "done" else ""
+    if len(text) > NTFY_TRANSCRIPT_MAX:
+        text = text[:NTFY_TRANSCRIPT_MAX - 1].rstrip() + "…"
+    return text or None
 
 
 def notify_recording(store, did):
@@ -2779,6 +2811,9 @@ def notify_recording(store, did):
         attach, is_preview = ntfy_attachment(recording, preview, tmp, did, mode in ("NFM", "FM")) if conf.get("attach") else (None, False)
         if is_preview:
             message += "\n" + T("L_SCN_NTFY_PREVIEW", NTFY_MAX_ATTACH // 1_000_000)
+        text = ntfy_transcript(store, did)
+        if text:
+            message += "\n\n" + T("L_SCN_NTFY_TRANSCRIPT", text)
         ntfy_send(conf, "%s · %s" % (fmt_mhz(freq), lbl or mode), message, attach)
         NTFY_LAST.update(time=time.time(), error=None)
     except (RuntimeError, OSError) as e:
@@ -2842,7 +2877,9 @@ class NtfyQueue:
         th.start()
 
     def wait(self, timeout=40):
-        """Before the program exits or restarts: the sendings under way finish (30 s timeout each)."""
+        """Before the program exits or restarts: the sendings under way finish (30 s timeout each), without
+        waiting any more for the transcripts."""
+        NTFY_HURRY.set()
         end = time.time() + timeout
         with self.lock:
             threads = list(self.sending)

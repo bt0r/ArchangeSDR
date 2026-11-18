@@ -213,5 +213,84 @@ class OncePerCapture(unittest.TestCase):
         self.assertEqual(self.sent, [])
 
 
+class Transcript(unittest.TestCase):
+    """The transcript goes in the message: waited for while it is queued or running (and a Transcriber
+    works), not when the program quits, cut when too long."""
+
+    def setUp(self):
+        self.a = app()
+        self.a.NTFY_HURRY.clear()
+        self.settings = self.a.load_settings()
+        self.a.save_settings(dict(self.settings, transcription={"engine": "whisper"}))
+        self.store = self.a.Store()
+        self.did = self.store.q("INSERT INTO detections (scan_id, freq, mode, label, first_seen, last_seen, hits, "
+                                "snr, score, kind) VALUES (0, 145.5e6, 'NFM', '2 m', 0, 0, 1, 20, 1.5, 'voice')",
+                                (), True)
+
+    def tearDown(self):
+        self.a.TRANSCRIBING.clear()
+        self.a.NTFY_HURRY.clear()
+        self.a.save_settings(self.settings)
+
+    def test_done(self):
+        self.store.request_transcript(self.did)
+        self.store.save_transcript(self.did, "done", "Tower,  this is\nF-GABC", "en", "whisper")
+        self.assertEqual(self.a.ntfy_transcript(self.store, self.did, wait=0), "Tower, this is F-GABC")
+
+    def test_none(self):
+        self.assertIsNone(self.a.ntfy_transcript(self.store, self.did, wait=5))      # never asked: no wait
+        self.store.request_transcript(self.did)
+        self.store.save_transcript(self.did, "empty")
+        self.assertIsNone(self.a.ntfy_transcript(self.store, self.did, wait=0))
+
+    def test_waits_for_it(self):
+        self.store.request_transcript(self.did)
+        self.a.TRANSCRIBING.set()
+        threading.Timer(0.5, self.store.save_transcript, (self.did, "done", "Roger", "en", "whisper")).start()
+        t = time.time()
+        self.assertEqual(self.a.ntfy_transcript(self.store, self.did, wait=10), "Roger")
+        self.assertLess(time.time() - t, 3)
+
+    def test_no_transcriber_no_wait(self):
+        """--cli has no Transcriber: a queued transcript is not waited for."""
+        self.store.request_transcript(self.did)
+        t = time.time()
+        self.assertIsNone(self.a.ntfy_transcript(self.store, self.did, wait=10))
+        self.assertLess(time.time() - t, 1)
+
+    def test_quitting(self):
+        self.store.request_transcript(self.did)
+        self.a.TRANSCRIBING.set()
+        threading.Timer(0.3, self.a.NTFY_HURRY.set).start()
+        t = time.time()
+        self.assertIsNone(self.a.ntfy_transcript(self.store, self.did, wait=10))
+        self.assertLess(time.time() - t, 3)
+
+    def test_cut(self):
+        self.store.request_transcript(self.did)
+        self.store.save_transcript(self.did, "done", "word " * 1000, "en", "whisper")
+        text = self.a.ntfy_transcript(self.store, self.did, wait=0)
+        self.assertEqual(len(text), self.a.NTFY_TRANSCRIPT_MAX)
+        self.assertTrue(text.endswith("…"))
+
+    def test_in_the_message(self):
+        server = http.server.HTTPServer(("127.0.0.1", 0), Ntfy)
+        threading.Thread(target=server.serve_forever, daemon=True).start()
+        Ntfy.got = []
+        self.store.request_transcript(self.did)
+        self.store.save_transcript(self.did, "done", "Tower, F-GABC, ready for departure", "en", "whisper")
+        try:
+            self.a.save_settings(dict(self.a.load_settings(), ntfy={
+                "enabled": True, "url": "http://127.0.0.1:%d/topic" % server.server_port}))
+            self.a.notify_recording(self.store, self.did)
+        finally:
+            server.shutdown()
+            server.server_close()
+        self.assertIsNone(self.a.NTFY_LAST.get("error"))
+        method, _, body = Ntfy.got[0]
+        self.assertEqual(method, "POST")
+        self.assertTrue(body.decode("utf-8").endswith("\n\n“Tower, F-GABC, ready for departure”"))
+
+
 if __name__ == "__main__":
     unittest.main()

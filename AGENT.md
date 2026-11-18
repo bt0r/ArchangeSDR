@@ -245,6 +245,12 @@ because the strings and `CONF` are read at import.
   What goes is always clean audio: the row's `_clean.wav` as it is; the preview and a recording made
   before the clean copy (`<id>.wav`) are filtered first (`clean_copy`, into the temporary folder, same
   name; de-emphasis when the row's mode is NFM / FM).
+- ntfy transcript (`ntfy_transcript`): the row's transcript (whitespace folded, cut at
+  `NTFY_TRANSCRIPT_MAX` = 1000 characters: with an attachment the message rides in the URL) closes the
+  message, in the language's quotes (`L_SCN_NTFY_TRANSCRIPT`). While it is pending or running,
+  `notify_recording` waits for it, at most `NTFY_TRANSCRIPT_WAIT_S` = 180 s, and only if a `Transcriber`
+  works (`TRANSCRIBING`: never in `--cli`, which has none) and the engine is on. `NtfyQueue.wait` sets
+  `NTFY_HURRY`: when the program quits or restarts, the notifications go at once, without the transcript.
 
 ## Files
 
