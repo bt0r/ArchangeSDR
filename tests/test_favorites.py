@@ -86,6 +86,15 @@ class Auto(unittest.TestCase):
         self.assertEqual((b.favorite, b.label, b.mode), ("auto", "2 m", "NFM"))
         self.assertEqual(bands, [b])
 
+    def test_last_voice(self):
+        self.assertIsNone(self.store.last_voice(self.F))
+        self.heard(1, days_ago=2)
+        self.heard(1, kind="parasite")
+        self.store.q("UPDATE detections SET recording = 'r.wav', audio = 'a.wav' WHERE kind = 'voice'", (), True)
+        last, rec, audio = self.store.last_voice(self.F)
+        self.assertAlmostEqual(last, time.time() - 2 * 86400, delta=60)
+        self.assertEqual((rec, audio), ("r.wav", "a.wav"))
+
     def test_four_or_interference_do_not(self):
         self.heard(4)
         self.heard(5, kind="parasite")

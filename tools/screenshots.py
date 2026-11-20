@@ -257,6 +257,9 @@ def render(theme, outdir):
                            {"freq": 446.09375e6, "snr": 12, "voice": False, "continuous": False, "candidate": True,
                             "quiet": True, "banned": False}], 0)
             app.toggle_favorite(446.00625e6, pmr.label, "NFM")      # a favorite starred during the scan
+            marine = next(b for b in app.bands if b.label.startswith("Marine VHF"))
+            app.favorites_changed(added=a.add_favorite(app.bands, app.settings, 156.8e6, marine.label, "NFM",
+                                                       kind="auto"))    # one the app added by itself
             app.show_banner(a.T("L_SCN_NOTIFY_TITLE", a.fmt_mhz(124.625e6)),
                             "Civil aviation (121.5 emergency) · AM · +27 dB · RTL-SDR Blog V4")
             app.refresh_lists()
@@ -279,6 +282,8 @@ def render(theme, outdir):
             take("log-search.png")
             do(lambda: (app.f_search.set_text(""), tab(app.rules_page)))
             take("interference.png")
+            do(lambda: tab(app.fav_page))
+            take("favorites.png")
             do(lambda: (tab(app.stats_page), app.stats_parasites.set_active(True)), 900)
             take("statistics.png")
             do(lambda: tab(app.stats_page + 1), 500)

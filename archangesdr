@@ -1715,6 +1715,12 @@ class Store:
         return self.q("SELECT COUNT(*) FROM detections WHERE kind = 'voice' AND ABS(freq - ?) < ?",
                       (freq, 1.5 * 6250))[0][0]
 
+    def last_voice(self, freq):
+        """(last_seen, recording, audio) of the last speech conversation on freq's channel, else None."""
+        rows = self.q("SELECT last_seen, recording, audio FROM detections WHERE kind = 'voice' AND ABS(freq - ?) < ? "
+                      "ORDER BY last_seen DESC LIMIT 1", (freq, 1.5 * 6250))
+        return rows[0] if rows else None
+
     def save_clip(self, did, audio, rate=2 * AUDIO_HALF_BW):
         """Writes the capture of the detection did; returns its path."""
         os.makedirs(CLIPS_DIR, exist_ok=True)
@@ -3405,7 +3411,7 @@ def gui():
             self.join_found = None     # {program id: installed}, looked up again at each refresh_lists
             self.fill_until, self.fill_done = 0, True   # sync: end of the time slice, every row built
             self.fill_more = None      # GLib source of the next slice
-            self.log_page, self.rules_page_n = 0, 0     # the page shown of each list (0-based)
+            self.log_page, self.rules_page_n, self.fav_page_n = 0, 0, 0     # the page shown of each list (0-based)
             self.log_filter = None     # the journal's filters: a change goes back to the first page
             self.compact = False       # action buttons as icons only (a narrow list)
             self.pagers = {}           # ListBox → (its pager, its scrolled window)
@@ -3595,14 +3601,22 @@ def gui():
                               margin_end=8, margin_top=6, margin_bottom=4))
             page.append(self.paged(self.rules_list, self.set_rules_page))
             self.rules_page = self.tabs.append_page(page, rules_tab)
+            fav_tab = tab("starred-symbolic", T("L_SCN_TAB_FAV"))
+            self.fav_list = Gtk.ListBox(selection_mode=Gtk.SelectionMode.NONE)
+            page = Gtk.Box(orientation=Gtk.Orientation.VERTICAL)
+            page.append(label(T("L_SCN_FAV_HINT", FAVORITE_WEIGHT), ["dim"], wrap=True, margin_start=8,
+                              margin_end=8, margin_top=6, margin_bottom=4))
+            page.append(self.paged(self.fav_list, self.set_fav_page))
+            self.fav_page = self.tabs.append_page(page, fav_tab)
             self.stats_page = self.tabs.append_page(self.build_stats(), tab("archangesdr-chart-symbolic",
                                                                             T("L_SCN_TAB_STATS")))
             self.tabs.append_page(self.build_settings(), tab("archangesdr-settings-symbolic", T("L_SCN_TAB_SETTINGS")))
             self.tabs.connect("switch-page", lambda _n, _p, i: i == self.stats_page and
                               GLib.idle_add(lambda: self.refresh_stats(devices=True) and False))
-            self.tabs.connect("switch-page", lambda _n, _p, i: i == self.rules_page and
+            self.tabs.connect("switch-page", lambda _n, _p, i: i in (self.rules_page, self.fav_page) and
                               GLib.idle_add(lambda: self.refresh_lists() and False))
             self.journal_tab_label, self.rules_tab_label = log_tab.text, rules_tab.text
+            self.fav_tab_label = fav_tab.text
             root.append(self.tabs)
             self.win.set_child(self.scroll_column(root))
             self.update_ranges_btn()
@@ -4471,7 +4485,8 @@ def gui():
                     box.nums.append(bt)
 
         def go_page(self, listbox, page):
-            (self.set_log_page if listbox is self.log_list else self.set_rules_page)(page)
+            {self.log_list: self.set_log_page, self.rules_list: self.set_rules_page,
+             self.fav_list: self.set_fav_page}[listbox](page)
 
         def set_log_page(self, page):
             self.log_page = max(0, page)
@@ -4482,6 +4497,11 @@ def gui():
             self.rules_page_n = max(0, page)
             self.refresh_lists()
             self.pagers[self.rules_list][1].get_vadjustment().set_value(0)
+
+        def set_fav_page(self, page):
+            self.fav_page_n = max(0, page)
+            self.refresh_lists()
+            self.pagers[self.fav_list][1].get_vadjustment().set_value(0)
 
         def set_compact(self, compact):
             if compact == self.compact:
@@ -4725,6 +4745,18 @@ def gui():
                 self.update_pagers(self.rules_list, self.rules_page_n, max(1, -(-n_rules // PAGE_ROWS)))
             n = self.store.q("SELECT COUNT(*) FROM freq_rules WHERE banned IS NOT NULL")[0][0]
             self.rules_tab_label.set_text(T("L_SCN_TAB_RULES_N", n) if n else T("L_SCN_TAB_RULES"))
+            favs = sorted((b for b in self.bands if b.favorite), key=lambda b: b.lo)
+            if self.tabs.get_current_page() == self.fav_page:      # its rows are built once it is shown
+                self.fav_page_n = min(self.fav_page_n, max(0, (len(favs) - 1) // PAGE_ROWS))
+                items = []
+                for b in favs[self.fav_page_n * PAGE_ROWS:(self.fav_page_n + 1) * PAGE_ROWS]:
+                    centre = (b.lo + b.hi) / 2
+                    info = (self.store.voice_count(centre), self.store.last_voice(centre))
+                    items.append((b.key, (b.label, b.mode, b.enabled, b.favorite) + info,
+                                  lambda b=b, info=info: self.fav_row(b, *info)))
+                self.sync(self.fav_list, items, T("L_SCN_NO_FAV"))
+                self.update_pagers(self.fav_list, self.fav_page_n, max(1, -(-len(favs) // PAGE_ROWS)))
+            self.fav_tab_label.set_text(T("L_SCN_TAB_FAV_N", len(favs)) if favs else T("L_SCN_TAB_FAV"))
             if self.tabs.get_current_page() == self.stats_page:
                 self.refresh_stats()
             if not self.fill_done and self.fill_more is None:      # the rest at the next idle moment
@@ -4835,6 +4867,29 @@ def gui():
                 bt.connect("clicked", lambda *_: self.unban(freq))
                 row.append(bt)
             row.append(self.white_button(freq, lbl, mode))
+            return row
+
+        def fav_row(self, band, n, last):
+            """A favorite: its frequency, range, how often it talked, its last conversation, the star to remove it."""
+            freq = (band.lo + band.hi) / 2
+            row = Gtk.Box(spacing=12, margin_top=6, margin_bottom=6, margin_start=8, margin_end=8)
+            f = label(fmt_mhz(freq), ["freq"])
+            f.set_size_request(170, -1)
+            row.append(f)
+            heard = P("L_SCN_FAV_LINE", n, n, fmt_time(last[0], DAY_FMT + " " + CLOCK_FMT)) if last else \
+                T("L_SCN_FAV_NEVER")
+            marks = ([T("L_SCN_FAV_AUTO")] if band.favorite == "auto" else []) + \
+                ([T("L_SCN_FAV_PAUSED")] if not band.enabled else [])
+            txt = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, hexpand=True)
+            for text, css in (("%s · %s" % (band.label or "?", band.mode), []),
+                              (" · ".join([heard] + marks), ["dim"])):
+                lb = label(text, css, ellipsize=Pango.EllipsizeMode.END, width_chars=10)
+                lb.set_tooltip_text(text)
+                txt.append(lb)
+            row.append(txt)
+            if last and (bt := self.row_play_button(last[1], last[2])) is not None:
+                row.append(bt)
+            row.append(self.star_button(freq, band.label, band.mode))
             return row
 
         # Statistics ---------------------------------------------------------------------------------
