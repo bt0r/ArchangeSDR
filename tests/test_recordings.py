@@ -255,5 +255,20 @@ class Alert(unittest.TestCase):
         self.assertLess(abs(out[0]), 0.01)                     # no click
 
 
+class PlayChoice(unittest.TestCase):
+    def test_preview_until_the_recording_exists(self):
+        a, tmp = app(), tempfile.mkdtemp()
+        try:
+            clip, rec = os.path.join(tmp, "1.wav"), os.path.join(tmp, "1_clean.wav")
+            self.assertIsNone(a.play_choice(None, clip))                  # nothing on disk
+            open(clip, "wb").close()
+            self.assertEqual(a.play_choice(None, clip), (clip, "preview"))
+            self.assertEqual(a.play_choice(rec, clip), (clip, "preview"))  # path stored, file gone (retention)
+            open(rec, "wb").close()
+            self.assertEqual(a.play_choice(rec, clip), (rec, "listen"))
+        finally:
+            shutil.rmtree(tmp, ignore_errors=True)
+
+
 if __name__ == "__main__":
     unittest.main()

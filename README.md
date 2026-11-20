@@ -129,8 +129,9 @@ In the window: tick your receivers and your ranges, then **Scan**. Everything el
 theme, recordings, Join program, notifications, transcription) is in the **Settings** tab. On a short screen, the
 arrow under the scan cards folds their spectra away (the choice is kept). The detection log and the
 interference list show 25 rows per page; on a narrow window their buttons shrink to their icons (the
-text stays in the tooltip). Scrollbars are always shown, not only when the pointer moves over a list. A Preview
-or Listen button shows the progress of its playback. `SIGUSR1` pauses the scan
+text stays in the tooltip). Scrollbars are always shown, not only when the pointer moves over a list. Each
+detection has one play button: **Preview** (its 2.5 s capture) until the whole recording is done, then
+**Listen**; it shows the progress of its playback. `SIGUSR1` pauses the scan
 and frees the receivers, for a launcher that needs them: `pkill -USR1 -f /archangesdr`.
 
 A few settings live in an optional plain `KEY=value` file (`~/.config/archangesdr/archangesdr.conf`):

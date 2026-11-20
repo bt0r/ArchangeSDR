@@ -307,6 +307,16 @@ def clean_copy(path, out, fm):
         return None
 
 
+def play_choice(recording, audio):
+    """What a log row plays: (path, "listen") once its whole recording is on disk, else (path, "preview") for
+    its 2.5 s capture, else None. One button: the preview gives way to the recording when it is complete."""
+    if recording and os.path.exists(recording):
+        return recording, "listen"
+    if audio and os.path.exists(audio):
+        return audio, "preview"
+    return None
+
+
 def raw_recording(path):
     """The unfiltered file next to a clean recording, for the transcription; an older recording (<id>.wav)
     is its own raw file."""
@@ -4569,12 +4579,8 @@ def gui():
                                     r["t_language"] or "?"), r["t_engine"] or "") if status == "done" else ""))
                 txt.append(lb)
             row.append(txt)
-            if r["audio"] and os.path.exists(r["audio"]):
-                row.append(self.play_button(r["audio"], T("L_SCN_PREVIEW", short_secs(wav_seconds(r["audio"]))),
-                                            T("L_SCN_CLIP_TIP"), PREVIEW_ICON))
-            if r["recording"] and os.path.exists(r["recording"]):
-                row.append(self.play_button(r["recording"], T("L_SCN_LISTEN", short_secs(wav_seconds(r["recording"]))),
-                                            T("L_SCN_REC_TIP", r["recording"])))
+            if (bt := self.row_play_button(r["recording"], r["audio"])) is not None:
+                row.append(bt)
             if (bt := self.reveal_button(r["recording"], r["audio"])) is not None:
                 row.append(bt)
             if self.tr_conf().get("engine", "off") != "off" and not parasite and r["kind"] != "station" and \
@@ -4590,6 +4596,17 @@ def gui():
                 row.append(bug)
             row.append(self.join_button(r))
             return row
+
+        def row_play_button(self, recording, audio):
+            """The one play button of a row: Preview (2.5 s) until the recording is complete, then Listen."""
+            choice = play_choice(recording, audio)
+            if choice is None:
+                return None
+            path, kind = choice
+            if kind == "listen":
+                return self.play_button(path, T("L_SCN_LISTEN", short_secs(wav_seconds(path))), T("L_SCN_REC_TIP", path))
+            return self.play_button(path, T("L_SCN_PREVIEW", short_secs(wav_seconds(path))), T("L_SCN_CLIP_TIP"),
+                                    PREVIEW_ICON)
 
         def mark_parasite(self, r):
             """A capture the speech test let through: its frequency banned (the scan never listens to it
