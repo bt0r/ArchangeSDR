@@ -4082,6 +4082,12 @@ def gui():
                 self.show_banner(title, body)
                 if sig["voice"] and sig.get("audio") is not None and recording_conf()[2]:
                     self.play_alert(sig["audio"])
+            if new and sig["voice"] and not sig.get("station"):
+                fav = auto_favorite(self.store, self.bands, self.settings, sig["freq"], band.label, sig["mode"])
+                if fav is not None:
+                    self.favorites_changed(added=fav)        # scanned more often from now on
+                    self.show_banner(T("L_SCN_FAV_ADDED", fmt_mhz(sig["freq"])),
+                                     T("L_SCN_FAV_ADDED_BODY", FAVORITE_AUTO_N))
             self.refresh_lists()
 
         def play_alert(self, preview):
@@ -5243,6 +5249,11 @@ def gui():
             alert.connect("toggled", lambda w: self.save(preview_alert=w.get_active()))
             line("", alert)
             hint(T("L_SCN_SET_REC_ALERT_HINT"))
+            auto_fav = Gtk.CheckButton(label=T("L_SCN_SET_FAV_AUTO"), active=favorites_conf(self.settings)["auto"])
+            auto_fav.connect("toggled", lambda w: (favorites_conf(self.settings).update(auto=w.get_active()),
+                                                   save_settings(self.settings)))
+            line("", auto_fav)
+            hint(T("L_SCN_SET_FAV_AUTO_HINT", FAVORITE_AUTO_N))
 
             # Join
             section(T("L_SCN_SET_JOIN"))
