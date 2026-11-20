@@ -54,5 +54,60 @@ class Bands(unittest.TestCase):
         self.assertEqual(a.with_favorites([new], [old, fav]), [new, fav])
 
 
+class Auto(unittest.TestCase):
+    F = 145.5e6
+
+    def setUp(self):
+        self.a = app()
+        self.tmp = tempfile.mkdtemp()
+        self.store = self.a.Store(os.path.join(self.tmp, "scanner.db"))
+        self.s = {"favorites": {"auto": True}}
+
+    def tearDown(self):
+        self.store.db.close()
+        shutil.rmtree(self.tmp, ignore_errors=True)
+
+    def heard(self, n, kind="voice", days_ago=0, freq=F):
+        t = time.time() - days_ago * 86400
+        for k in range(n):
+            self.store.q("INSERT INTO detections (freq, kind, first_seen, last_seen, hits) VALUES (?, ?, ?, ?, 1)",
+                         (freq + (k % 2) * 3000, kind, t, t), True)
+
+    def auto(self, bands):
+        return self.a.auto_favorite(self.store, bands, self.s, self.F, "2 m", "NFM")
+
+    def test_five_listens_add(self):
+        self.heard(3, days_ago=60)            # no time limit
+        self.heard(2)
+        self.heard(5, freq=146.0e6)           # another channel
+        self.assertEqual(self.store.voice_count(self.F), 5)
+        bands = []
+        b = self.auto(bands)
+        self.assertEqual((b.favorite, b.label, b.mode), ("auto", "2 m", "NFM"))
+        self.assertEqual(bands, [b])
+
+    def test_four_or_interference_do_not(self):
+        self.heard(4)
+        self.heard(5, kind="parasite")
+        self.assertIsNone(self.auto([]))
+        self.heard(1)
+        self.store.rules.ban(self.F, "2 m", "NFM", "marked as interference")
+        self.assertIsNone(self.auto([]))
+
+    def test_off_refused_or_existing_do_not(self):
+        self.heard(5)
+        self.s["favorites"]["auto"] = False
+        self.assertIsNone(self.auto([]))
+        self.s["favorites"]["auto"] = True
+        self.s["favorites"]["refused"] = [self.a.fav_key(self.F) + 1]      # the neighbouring key: same channel
+        self.assertIsNone(self.auto([]))
+        self.s["favorites"]["refused"] = []
+        paused = self.a.add_favorite([], {}, self.F, "2 m", "NFM")
+        paused.enabled = False                 # unticked: still a favorite
+        bands = [paused]
+        self.assertIsNone(self.auto(bands))
+        self.assertEqual(bands, [paused])
+
+
 if __name__ == "__main__":
     unittest.main()

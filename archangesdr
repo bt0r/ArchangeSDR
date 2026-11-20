@@ -563,7 +563,7 @@ def add_favorite(bands, settings, freq, label, mode, kind="manual"):
                     favorite=kind)
         bands.append(band)
     refused = favorites_conf(settings)["refused"]
-    refused[:] = [k for k in refused if k != fav_key(freq)]
+    refused[:] = [k for k in refused if abs(k - fav_key(freq)) > 1]
     return band
 
 
@@ -574,6 +574,18 @@ def remove_favorite(bands, settings, band):
     refused, k = favorites_conf(settings)["refused"], fav_key((band.lo + band.hi) / 2)
     if k not in refused:
         refused.append(k)
+
+
+def auto_favorite(store, bands, settings, freq, label, mode):
+    """With the setting on: freq becomes a favorite ("auto") once FAVORITE_AUTO_N speech conversations were
+    heard on its channel, unless it is banned as interference, already a favorite (even unticked) or one the
+    user removed. Returns the new favorite, else None."""
+    conf = favorites_conf(settings)
+    if not conf["auto"] or any(abs(k - fav_key(freq)) <= 1 for k in conf["refused"]) \
+            or favorite_of(bands, freq) is not None \
+            or store.rules.banned(freq) or store.voice_count(freq) < FAVORITE_AUTO_N:
+        return None
+    return add_favorite(bands, settings, freq, label, mode, kind="auto")
 
 
 def with_favorites(new_bands, old_bands):
@@ -1687,6 +1699,11 @@ class Store:
                      (scan_id, sig["freq"], sig["mode"], band.label, now, now, sig["snr"], sig["score"], kind,
                       sig.get("reason"), json.dumps(sig.get("params")), device), True)
         return did, True
+
+    def voice_count(self, freq):
+        """Speech conversations heard on freq's channel (6.25 kHz key, ±1 key), over the whole history."""
+        return self.q("SELECT COUNT(*) FROM detections WHERE kind = 'voice' AND ABS(freq - ?) < ?",
+                      (freq, 1.5 * 6250))[0][0]
 
     def save_clip(self, did, audio, rate=2 * AUDIO_HALF_BW):
         """Writes the capture of the detection did; returns its path."""
