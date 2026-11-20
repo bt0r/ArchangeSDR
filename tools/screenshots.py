@@ -256,6 +256,7 @@ def render(theme, outdir):
                             "quiet": False, "banned": False},
                            {"freq": 446.09375e6, "snr": 12, "voice": False, "continuous": False, "candidate": True,
                             "quiet": True, "banned": False}], 0)
+            app.toggle_favorite(446.00625e6, pmr.label, "NFM")      # a favorite starred during the scan
             app.show_banner(a.T("L_SCN_NOTIFY_TITLE", a.fmt_mhz(124.625e6)),
                             "Civil aviation (121.5 emergency) · AM · +27 dB · RTL-SDR Blog V4")
             app.refresh_lists()

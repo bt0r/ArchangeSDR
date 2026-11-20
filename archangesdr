@@ -3751,11 +3751,14 @@ def gui():
             box = self.range_box
             clear(box)
             # grouped by group (in order of appearance), then by frequency
-            sections = list(dict.fromkeys(b.section for b in self.bands))
+            # favorites: the group's name of the current language, whatever the file says
+            group = lambda b: T("L_SCN_FAV_GROUP") if b.favorite else b.section
+            sections = list(dict.fromkeys([group(b) for b in self.bands if b.favorite] +   # favorites first
+                                          [group(b) for b in self.bands]))
             section = None
-            for b in sorted(self.bands, key=lambda b: (sections.index(b.section), b.lo)):
-                if b.section != section:
-                    section = b.section
+            for b in sorted(self.bands, key=lambda b: (sections.index(group(b)), b.lo)):
+                if group(b) != section:
+                    section = group(b)
                     box.append(label(section.capitalize(), ["dim"], margin_top=8))
                 row = Gtk.Box(spacing=6)
                 n = sum(1 for _ in b.hops())
@@ -3791,6 +3794,10 @@ def gui():
             self.refresh_stats()
 
         def delete_range(self, band, _parent=None):
+            if band.favorite:
+                remove_favorite(self.bands, self.settings, band)
+                self.favorites_changed(removed=band)
+                return
             self.bands.remove(band)
             save_ranges(self.bands)
             self.rebuild_ranges()
@@ -3821,7 +3828,7 @@ def gui():
                 return
 
             def apply():
-                self.bands = bands
+                self.bands = bands = with_favorites(bands, self.bands)     # a preset never wipes the favorites
                 save_ranges(self.bands)
                 self.rebuild_ranges()
                 self.set_status.set_text(P("L_SCN_SET_PRESET_DONE", len(bands), len(bands)))
@@ -3869,7 +3876,7 @@ def gui():
                     return
                 new = Band(a, b, name.get_text().strip(), MODES[mode.get_selected()],
                            section.get_text().strip() or T("L_SCN_MY_RANGES"), band.enabled if band else True,
-                           band.color if band else None)
+                           band.color if band else None, band.favorite if band else None)
                 if band:
                     self.bands[self.bands.index(band)] = new
                 else:
@@ -4594,6 +4601,7 @@ def gui():
                 bug.add_css_class("plain")
                 bug.connect("clicked", lambda *_: self.mark_parasite(r))
                 row.append(bug)
+                row.append(self.star_button(r["freq"], r["label"], r["mode"]))
             row.append(self.join_button(r))
             return row
 
@@ -4607,6 +4615,36 @@ def gui():
                 return self.play_button(path, T("L_SCN_LISTEN", short_secs(wav_seconds(path))), T("L_SCN_REC_TIP", path))
             return self.play_button(path, T("L_SCN_PREVIEW", short_secs(wav_seconds(path))), T("L_SCN_CLIP_TIP"),
                                     PREVIEW_ICON)
+
+        def star_button(self, freq, lbl, mode):
+            """Adds freq to the favorites (scanned FAVORITE_WEIGHT times per pass) or removes it."""
+            fav = favorite_of(self.bands, freq)
+            bt = Gtk.Button(icon_name="starred-symbolic" if fav else "non-starred-symbolic", valign=Gtk.Align.CENTER,
+                            tooltip_text=T("L_SCN_FAV_REMOVE_TIP", fmt_mhz(freq)) if fav else
+                            T("L_SCN_FAV_ADD_TIP", fmt_mhz(freq), FAVORITE_WEIGHT))
+            bt.add_css_class("plain")
+            bt.connect("clicked", lambda *_: self.toggle_favorite(freq, lbl, mode))
+            return bt
+
+        def toggle_favorite(self, freq, lbl, mode):
+            fav = favorite_of(self.bands, freq)
+            if fav:
+                remove_favorite(self.bands, self.settings, fav)
+                self.favorites_changed(removed=fav)
+            else:
+                self.favorites_changed(added=add_favorite(self.bands, self.settings, freq, lbl, mode))
+
+        def favorites_changed(self, added=None, removed=None):
+            """Saves the ranges and the refused list, and tells the scan running (a favorite counts at once)."""
+            save_ranges(self.bands)
+            save_settings(self.settings)
+            if self.state is not None:
+                if added is not None and added.enabled:
+                    self.state.add_band(added)
+                if removed is not None:
+                    self.state.remove_band(removed)
+            self.rebuild_ranges()
+            self.refresh_lists()
 
         def mark_parasite(self, r):
             """A capture the speech test let through: its frequency banned (the scan never listens to it
@@ -4667,7 +4705,8 @@ def gui():
             active_ids = {r["id"] for r in rows if now - r["last_seen"] < (ACTIVE_HOLD_S if r["kind"] == "voice"
                                                                           else STATION_HOLD_S)}
             common = (self.tr_conf().get("engine"), len(load_device_conf()) > 1)
-            self.sync(self.log_list, [(r["id"], (tuple(r.values()), r["id"] in active_ids) + common,
+            self.sync(self.log_list, [(r["id"], (tuple(r.values()), r["id"] in active_ids,
+                                                 favorite_of(self.bands, r["freq"]) is not None) + common,
                                        lambda r=r: self.det_row(r, now)) for r in rows], T("L_SCN_NO_DETECTIONS"))
             self.update_pagers(self.log_list, self.log_page, max(1, -(-total // PAGE_ROWS)))
             active = self.store.q("SELECT COUNT(*) FROM detections WHERE kind = 'voice' AND last_seen > ?",
