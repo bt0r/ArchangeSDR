@@ -69,9 +69,9 @@ class Auto(unittest.TestCase):
 
     def heard(self, n, kind="voice", days_ago=0, freq=F):
         t = time.time() - days_ago * 86400
-        for k in range(n):
+        for k in range(n):            # 10 min apart: n separate conversations
             self.store.q("INSERT INTO detections (freq, kind, first_seen, last_seen, hits) VALUES (?, ?, ?, ?, 1)",
-                         (freq + (k % 2) * 3000, kind, t, t), True)
+                         (freq + (k % 2) * 3000, kind, t - k * 600, t - k * 600), True)
 
     def auto(self, bands):
         return self.a.auto_favorite(self.store, bands, self.s, self.F, "2 m", "NFM")
@@ -85,6 +85,17 @@ class Auto(unittest.TestCase):
         b = self.auto(bands)
         self.assertEqual((b.favorite, b.label, b.mode), ("auto", "2 m", "NFM"))
         self.assertEqual(bands, [b])
+
+    def test_two_receivers_taking_turns_count_one_conversation(self):
+        t = time.time() - 3600
+        # one conversation: dongle A heard it, dongle B heard the reply 90 s later (another row: per receiver)
+        for dev, first, last in (("A", t, t + 40), ("B", t + 130, t + 150), ("A", t + 200, t + 210)):
+            self.store.q("INSERT INTO detections (freq, kind, first_seen, last_seen, hits, device) "
+                         "VALUES (?, 'voice', ?, ?, 1, ?)", (self.F, first, last, dev), True)
+        self.assertEqual(self.store.voice_count(self.F), 1)
+        self.store.q("INSERT INTO detections (freq, kind, first_seen, last_seen, hits, device) "
+                     "VALUES (?, 'voice', ?, ?, 1, 'B')", (self.F, t + 210 + 121, t + 400), True)
+        self.assertEqual(self.store.voice_count(self.F), 2)       # more than 2 min later: another one
 
     def test_last_voice(self):
         self.assertIsNone(self.store.last_voice(self.F))

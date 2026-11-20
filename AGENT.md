@@ -121,7 +121,9 @@ and keeps its files in its own folders (see Files below).
   A favorite starred during a scan is added to it at once (`ScanState.add_band`); a removed one is marked
   `gone` (hop indices stay: claims and boosts hold them). Every removal (star, tab, ranges dialog) puts its
   6.25 kHz key in `settings["favorites"]["refused"]` (±1 key matches), so the automatic add
-  (`FAVORITE_AUTO_N` = 5 speech conversations, whole history, not banned) never brings back what the user
+  (`FAVORITE_AUTO_N` = 5 speech conversations, whole history, not banned; `Store.voice_count` counts rows
+  less than `ACTIVE_HOLD_S` apart as one conversation, since rows merge per receiver and two receivers can
+  take turns on a channel, one recording, the other hearing the reply) never brings back what the user
   took away. An unticked favorite is still one (not scanned). A region preset keeps the favorites
   (`with_favorites`). Hits on a favorite hop keep the range's label (statistics by label).
 - **One play button per log row** (`play_choice`, `App.row_play_button`): Preview (the 2.5 s capture) until

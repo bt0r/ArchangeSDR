@@ -1711,9 +1711,16 @@ class Store:
         return did, True
 
     def voice_count(self, freq):
-        """Speech conversations heard on freq's channel (6.25 kHz key, ±1 key), over the whole history."""
-        return self.q("SELECT COUNT(*) FROM detections WHERE kind = 'voice' AND ABS(freq - ?) < ?",
-                      (freq, 1.5 * 6250))[0][0]
+        """Speech conversations heard on freq's channel (6.25 kHz key, ±1 key), over the whole history. Rows
+        less than ACTIVE_HOLD_S apart are one conversation: rows merge per receiver only, and two receivers
+        can take turns on a channel (one records, the other takes the hop next and hears the reply)."""
+        n, end = 0, None
+        for first, last in self.q("SELECT first_seen, last_seen FROM detections WHERE kind = 'voice' "
+                                  "AND ABS(freq - ?) < ? ORDER BY first_seen", (freq, 1.5 * 6250)):
+            if end is None or first - end > ACTIVE_HOLD_S:
+                n += 1
+            end = last if end is None else max(end, last)
+        return n
 
     def last_voice(self, freq):
         """(last_seen, recording, audio) of the last speech conversation on freq's channel, else None."""
