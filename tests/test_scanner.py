@@ -92,6 +92,29 @@ class Plan(unittest.TestCase):
         self.assertEqual(st.pick("d"), 1)
         self.assertIn(fav, st.bands)
 
+    def test_favorite_added_after_passes_joins_the_current_pass(self):
+        a = app()
+        bands = [a.Band(400e6 + k * 1e6, 400e6 + k * 1e6 + 0.1e6, "r%d" % k, "NFM", "s") for k in range(40)]
+        st = a.ScanState(bands)
+        st.register("d", [(24e6, 1766e6)])
+        for _ in range(40 * 10):
+            st.release(st.pick("d"), True)
+        st.add_band(self.favorite())
+        self.assertEqual(st.passes, 10)                      # not back to pass 0
+        picks = []
+        for _ in range(44):
+            i = st.pick("d")
+            picks.append(i)
+            st.release(i, True)
+        self.assertEqual(picks.count(40), 4)                 # its 4 visits of the pass, not 44 in a row
+        self.assertEqual(st.passes, 11)
+
+    def test_mutes_count_a_favorite_in_passes_not_visits(self):
+        a = app()
+        st = a.ScanState([a.Band(145.0e6, 145.1e6, "2 m", "NFM", "s"), self.favorite()])
+        st.hops[0]["visits"], st.hops[1]["visits"] = 3, 12
+        self.assertEqual([a.ScanState.hop_passes(h) for h in st.hops], [3, 3])
+
     def test_remove_claimed_band(self):
         a = app()
         fav = self.favorite()

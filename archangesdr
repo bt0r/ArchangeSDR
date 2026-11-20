@@ -2249,8 +2249,11 @@ class ScanState:
     def add_band(self, band):
         """A range added during the scan (a new favorite): its hops go at the end of the plan."""
         with self.lock:
+            done, hops = self.passes, self._hops_of(band)
+            for h in hops:             # it joins the current pass (from 0 visits, it took every pick until caught up)
+                h["visits"] = done * h["weight"]
             self.bands.append(band)
-            self.hops += self._hops_of(band)
+            self.hops += hops
             self._phases()
             self._count()
 
@@ -2264,10 +2267,15 @@ class ScanState:
                     h["gone"] = True
             self._phases()
 
+    @staticmethod
+    def hop_passes(h):
+        """Passes a hop has had: its visits over its weight."""
+        return h["visits"] // h["weight"]
+
     @property
     def passes(self):
         """Complete passes: every hop visited that many times (a favorite FAVORITE_WEIGHT times per pass)."""
-        return min((h["visits"] // h["weight"] for h in self.hops if not h["gone"]), default=0)
+        return min((self.hop_passes(h) for h in self.hops if not h["gone"]), default=0)
 
     @staticmethod
     def tuned(h):
@@ -2571,7 +2579,7 @@ class Scanner(threading.Thread):
                 self.record(sdr, band, lo, hi, tuned, found)
             return True
         spectrum, cands = det.survey(iq, tuned, lo, hi, sdr.rate)
-        passes = h["visits"]
+        passes = st.hop_passes(h)      # in passes, as the mutes count (a favorite has 4 visits per pass)
         todo = [f for f, _ in cands if det.whitelisted(f) or not (det.banned(f) or det.is_quiet(f, passes))]
         marks = [{"freq": f, "snr": d, "voice": False, "continuous": False, "candidate": True,
                   "quiet": f not in todo, "banned": det.banned(f)} for f, d in cands]
