@@ -102,24 +102,14 @@ your user to the group they use (`plugdev` on Debian).
 
 Transcription is optional, but it is what makes the log searchable. The free, local engine is
 `whisper-cli` from [whisper.cpp](https://github.com/ggml-org/whisper.cpp): nothing leaves your
-computer.
+computer. ArchangeSDR installs the models itself; the program comes from your distribution or from
+whisper.cpp.
 
 | Distribution | Install |
 |---|---|
-| Arch, EndeavourOS, Manjaro | `sudo pacman -S whisper-cpp` |
-| Fedora | `sudo dnf install whisper-cpp` |
-| Debian testing / unstable, Ubuntu 26.04 or newer | `sudo apt install whisper.cpp-tools` |
-| Debian 12 / 13, Raspberry Pi OS (uConsole), older Ubuntu, others | build it (below) |
-
-Building takes a few minutes on a PC, longer on a Raspberry Pi CM4:
-
-```bash
-sudo apt install build-essential cmake git      # or your distribution's compiler, cmake and git
-git clone https://github.com/ggml-org/whisper.cpp
-cd whisper.cpp
-cmake -B build && cmake --build build -j --config Release
-install -m 755 build/bin/whisper-cli ~/.local/bin/
-```
+| Arch, EndeavourOS, Manjaro, Fedora | `sudo pacman -S whisper-cpp` / `sudo dnf install whisper-cpp` |
+| Debian testing / unstable, Ubuntu 26.04 or newer | `sudo apt install whisper.cpp` |
+| Debian 12 / 13, Raspberry Pi OS (uConsole), older Ubuntu, others | build it with whisper.cpp's [Quick start](https://github.com/ggml-org/whisper.cpp#quick-start) (a few minutes on a PC, longer on a Raspberry Pi CM4), then give the path of its `build/bin/whisper-cli` in the *Program* field below. Keep the whisper.cpp folder: the program uses libraries built next to it. Its model download step is not needed. |
 
 Then, in **Settings → Transcription**: pick *whisper-cli*, choose a model and click **Install**.
 `base` (60 MB) suits a uConsole, `large-v3-turbo` (574 MB) a recent PC. ArchangeSDR finds

@@ -63,17 +63,19 @@ command -v lame >/dev/null || command -v ffmpeg >/dev/null ||
   echo "Optional: lame or ffmpeg, to attach the recordings to ntfy notifications in MP3."
 python3 -c 'import SoapySDR' 2>/dev/null ||
   echo "Optional: SoapySDR's Python module, for receivers other than RTL-SDR (HackRF, Airspy, SDRplay...)."
-# whisper-cli: the free, local transcription (packaged on Arch, Fedora, Debian testing, Ubuntu 26.04+)
+# whisper-cli: the free, local transcription (packaged on Arch, Fedora, Debian testing, Ubuntu 26.04+;
+# elsewhere whisper.cpp's own instructions, not a copy of them that would age)
 if ! command -v whisper-cli >/dev/null; then
   ids=""
+  build="build it with https://github.com/ggml-org/whisper.cpp#quick-start, then give its build/bin/whisper-cli in Settings, Transcription, Program"
   [ -r /etc/os-release ] && ids="$(. /etc/os-release; echo "$ID $ID_LIKE")"
   case " $ids " in
     *" arch "*) how="sudo pacman -S whisper-cpp" ;;
     *" fedora "*) how="sudo dnf install whisper-cpp" ;;
     *" debian "*|*" ubuntu "*)
-      if apt-cache show whisper.cpp-tools >/dev/null 2>&1; then how="sudo apt install whisper.cpp-tools"
-      else how="build it: see \"Transcription with whisper.cpp\" in README.md"; fi ;;
-    *) how="see \"Transcription with whisper.cpp\" in README.md" ;;
+      if apt-cache show whisper.cpp >/dev/null 2>&1; then how="sudo apt install whisper.cpp"
+      else how="$build"; fi ;;
+    *) how="$build" ;;
   esac
   echo "Optional: whisper-cli, to transcribe the recordings ($how)."
 fi
