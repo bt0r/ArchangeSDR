@@ -177,6 +177,11 @@ STREAM_MAX_S = 4.0        # buffered at most (the oldest data is dropped beyond)
 MERGE_HZ = 4_000          # two detections less than 4 kHz apart = the same frequency
 BAN_PARASITE = 3          # a frequency heard 3 times in a row without speech is banned for good (never listened
                           # to again), unless whitelisted
+FAVORITE_HALF_HZ = 6_250  # a favorite is a range of +-6.25 kHz around its frequency: one channel, one survey hop
+FAVORITE_WEIGHT = 4       # survey visits of a favorite's hop per pass (1 for any other hop): the frequencies the
+                          # user cares about are not lost among hundreds of silent hops
+FAVORITE_AUTO_N = 5       # speech conversations heard at a frequency (not banned) before it becomes a favorite by
+                          # itself, when the setting is on; no time limit
 
 # Recording: after the capture that detected speech, the scan stays on the window and records the
 # conversation as long as it goes on
@@ -439,9 +444,10 @@ def band_color(label, color=None):
 
 
 class Band:
-    def __init__(self, lo, hi, label, mode, section, enabled=None, color=None):
+    def __init__(self, lo, hi, label, mode, section, enabled=None, color=None, favorite=None):
         self.lo, self.hi, self.label, self.mode, self.section = lo, hi, label, mode, section
         self.color = color
+        self.favorite = favorite      # None (a range), "manual" (starred by the user) or "auto" (added by itself)
         self.key = "%d-%d" % (lo, hi)
         # HF: unchecked by default, and the very large ranges (23 cm: 60 windows) too. Broadcast ranges
         # (continuous carriers, nothing to "detect") are already unchecked in the default ranges file.
@@ -453,12 +459,15 @@ class Band:
              "section": self.section, "enabled": self.enabled}
         if self.color:
             d["color"] = self.color
+        if self.favorite:
+            d["favorite"] = self.favorite
         return d
 
     @classmethod
     def from_dict(cls, d):
         return cls(float(d["lo_mhz"]) * 1e6, float(d["hi_mhz"]) * 1e6, d.get("label") or "", d["mode"],
-                   d.get("section") or T("L_SCN_MY_RANGES"), bool(d.get("enabled", True)), d.get("color"))
+                   d.get("section") or T("L_SCN_MY_RANGES"), bool(d.get("enabled", True)), d.get("color"),
+                   d.get("favorite"))
 
     def hops(self):
         """Survey hops (centre, start, end, wide) covering the range, each with its own interval: the
@@ -522,6 +531,54 @@ def save_ranges(bands):
     with open(tmp, "w", encoding="utf-8") as f:
         json.dump([b.to_dict() for b in bands], f, ensure_ascii=False, indent=1)
     os.replace(tmp, RANGES)
+
+
+# Favorites: narrow ranges marked by their favorite field (never by their group's name, which follows the
+# language). The helpers change the lists and the settings dict; the caller saves them.
+def fav_key(freq):
+    """6.25 kHz key of a frequency (the same as FreqRules'): ±1 key is the same channel."""
+    return int(round(freq / 6250))
+
+
+def favorite_of(bands, freq):
+    """The favorite (ticked or not) on freq's channel, else None."""
+    k = fav_key(freq)
+    return next((b for b in bands if b.favorite and abs(fav_key((b.lo + b.hi) / 2) - k) <= 1), None)
+
+
+def favorites_conf(settings):
+    """settings["favorites"]: auto (add the frequently heard frequencies), refused (keys of the favorites the
+    user removed: never added back by themselves)."""
+    conf = settings.setdefault("favorites", {})
+    conf.setdefault("auto", False)
+    conf.setdefault("refused", [])
+    return conf
+
+
+def add_favorite(bands, settings, freq, label, mode, kind="manual"):
+    """The favorite on freq's channel, made if there is none (named like the range it was heard in)."""
+    band = favorite_of(bands, freq)
+    if band is None:
+        band = Band(freq - FAVORITE_HALF_HZ, freq + FAVORITE_HALF_HZ, label, mode, T("L_SCN_FAV_GROUP"), True,
+                    favorite=kind)
+        bands.append(band)
+    refused = favorites_conf(settings)["refused"]
+    refused[:] = [k for k in refused if k != fav_key(freq)]
+    return band
+
+
+def remove_favorite(bands, settings, band):
+    """Removes a favorite, wherever from (star, Favorites tab, ranges dialog): automatic adds skip it from now on."""
+    if band in bands:
+        bands.remove(band)
+    refused, k = favorites_conf(settings)["refused"], fav_key((band.lo + band.hi) / 2)
+    if k not in refused:
+        refused.append(k)
+
+
+def with_favorites(new_bands, old_bands):
+    """new_bands (a region's preset) plus the favorites of old_bands: a preset never wipes the favorites."""
+    return list(new_bands) + [b for b in old_bands if b.favorite]
 
 
 def fmt_mhz(hz, decimals=4):
@@ -1723,7 +1780,7 @@ class FreqRules:
 
     @staticmethod
     def key(freq):
-        return int(round(freq / 6250))
+        return fav_key(freq)
 
     def _near(self, freq):
         k = self.key(freq)
