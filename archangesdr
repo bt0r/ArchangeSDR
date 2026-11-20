@@ -2181,25 +2181,60 @@ class ScanState:
     receivers never analyse the same frequency."""
 
     def __init__(self, bands, dwell=2.5, threshold=8.0, max_passes=0):
-        self.bands, self.dwell, self.max_passes = bands, dwell, max_passes
+        self.dwell, self.max_passes = dwell, max_passes
         self.detector = Detector(threshold)
         self.scan_id = None
         self.done = 0
         self.stations = set()     # FM radios already recorded during this scan (100 kHz key)
         self.boosts = {}          # recency boost: 6.25 kHz key → {band, freq, until, due}
         self.lock = threading.RLock()
-        self.hops = [{"band": b, "c": c, "lo": lo, "hi": hi, "wide": wide, "visits": 0, "coverers": 0}
-                     for b in bands for c, lo, hi, wide in b.hops()]
+        self.bands = list(bands)
+        self.hops = [h for b in self.bands for h in self._hops_of(b)]
+        self._phases()
         self.claims = {}          # hop index → receiver working on it
         self.coverage = {}        # receiver → [(lo, hi)] it tunes
         self.running = set()      # receivers whose thread is alive
         self.errors = []
         self.paused = False
 
+    @staticmethod
+    def _hops_of(band):
+        # weight: visits per pass (a favorite's hop FAVORITE_WEIGHT times); gone: its range was removed during
+        # the scan (the hop keeps its index: claims and boosts hold indices)
+        return [{"band": band, "c": c, "lo": lo, "hi": hi, "wide": wide, "visits": 0, "coverers": 0,
+                 "weight": FAVORITE_WEIGHT if band.favorite else 1, "phase": 0.0, "gone": False}
+                for c, lo, hi, wide in band.hops()]
+
+    def _phases(self):
+        """Place of each hop in a pass, in [0, 1): the ordinary hops in sweep order, the favorites spread
+        between them, so a favorite's visits are a quarter of a pass apart, never back to back."""
+        live = [h for h in self.hops if not h["gone"]]
+        for group, offset in (([h for h in live if h["weight"] == 1], 0.0), ([h for h in live if h["weight"] > 1], 0.5)):
+            for j, h in enumerate(group):
+                h["phase"] = (j + offset) / len(group)
+
+    def add_band(self, band):
+        """A range added during the scan (a new favorite): its hops go at the end of the plan."""
+        with self.lock:
+            self.bands.append(band)
+            self.hops += self._hops_of(band)
+            self._phases()
+            self._count()
+
+    def remove_band(self, band):
+        """A range removed during the scan: its hops are never picked again (a receiver on one finishes it)."""
+        with self.lock:
+            if band in self.bands:
+                self.bands.remove(band)
+            for h in self.hops:
+                if h["band"] is band:
+                    h["gone"] = True
+            self._phases()
+
     @property
     def passes(self):
-        """Complete passes: every hop visited that many times."""
-        return min((h["visits"] for h in self.hops), default=0)
+        """Complete passes: every hop visited that many times (a favorite FAVORITE_WEIGHT times per pass)."""
+        return min((h["visits"] // h["weight"] for h in self.hops if not h["gone"]), default=0)
 
     @staticmethod
     def tuned(h):
@@ -2240,21 +2275,24 @@ class ScanState:
             segs = self.coverage.get(dev, [])
             best, left = None, False
             for i, h in enumerate(self.hops):
-                if not self.covers(segs, h) or self.max_passes and h["visits"] >= self.max_passes:
+                if h["gone"] or not self.covers(segs, h) or \
+                        self.max_passes and h["visits"] // h["weight"] >= self.max_passes:
                     continue
                 left = True
-                key = (h["visits"], h["coverers"], i)
+                # the pass first, then what only this receiver reaches, then the place in the pass
+                due = (h["visits"] + h["phase"]) / h["weight"]
+                key = (int(due), h["coverers"], due, i)
                 if i not in self.claims and (best is None or key < best):
                     best = key
             if best is None:
                 return None if left else False
-            self.claims[best[2]] = dev
-            return best[2]
+            self.claims[best[3]] = dev
+            return best[3]
 
     def claim(self, i, dev):
         """Claims hop i (a recency-boost visit) if it is free and dev tunes it."""
         with self.lock:
-            if i in self.claims or not self.covers(self.coverage.get(dev, []), self.hops[i]):
+            if i in self.claims or self.hops[i]["gone"] or not self.covers(self.coverage.get(dev, []), self.hops[i]):
                 return False
             self.claims[i] = dev
             return True
@@ -2266,10 +2304,12 @@ class ScanState:
                 self.hops[i]["visits"] += 1
 
     def hop_of(self, band, freq):
-        return next((i for i, h in enumerate(self.hops) if h["band"] is band and h["lo"] <= freq < h["hi"]), None)
+        return next((i for i, h in enumerate(self.hops)
+                     if h["band"] is band and not h["gone"] and h["lo"] <= freq < h["hi"]), None)
 
     def estimate(self):
-        return len(self.hops) * (SURVEY_S + 0.06)     # + tuning (30 ms dropped) and the FFT
+        # + tuning (30 ms dropped) and the FFT; a favorite's hop counts FAVORITE_WEIGHT times
+        return sum(h["weight"] for h in self.hops if not h["gone"]) * (SURVEY_S + 0.06)
 
 
 def listen_windows(lo_bound, hi_bound, cands):

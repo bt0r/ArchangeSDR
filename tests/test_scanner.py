@@ -60,6 +60,54 @@ class Plan(unittest.TestCase):
         st.max_passes = 1
         self.assertIs(st.pick("v4"), False)
 
+    def favorite(self, freq=145.5e6):
+        return app().add_favorite([], {}, freq, "2 m", "NFM")
+
+    def test_favorite_four_visits_spread(self):
+        a = app()
+        bands = [a.Band(400e6 + k * 1e6, 400e6 + k * 1e6 + 0.1e6, "r%d" % k, "NFM", "s") for k in range(40)]
+        st = a.ScanState(bands + [self.favorite()])
+        st.register("d", [(24e6, 1766e6)])
+        fav = len(st.hops) - 1
+        picks = []
+        for _ in range((40 + 4) * 4):          # a pass: 40 ordinary hops + the favorite 4 times
+            i = st.pick("d")
+            picks.append(i)
+            st.release(i, True)
+        at = [n for n, i in enumerate(picks) if i == fav]
+        self.assertEqual(len(at), 16)
+        self.assertEqual(st.passes, 4)
+        self.assertGreaterEqual(min(b - a for a, b in zip(at, at[1:])), 5)    # never back to back
+
+    def test_add_band_live(self):
+        a = app()
+        st = a.ScanState([a.Band(145.0e6, 145.1e6, "2 m", "NFM", "s")])
+        st.register("d", [(24e6, 1766e6)])
+        self.assertEqual(st.pick("d"), 0)
+        fav = self.favorite()
+        st.add_band(fav)
+        st.release(0, True)
+        i = st.hop_of(fav, 145.5e6)
+        self.assertEqual(i, 1)
+        self.assertEqual(st.pick("d"), 1)
+        self.assertIn(fav, st.bands)
+
+    def test_remove_claimed_band(self):
+        a = app()
+        fav = self.favorite()
+        st = a.ScanState([a.Band(145.0e6, 145.1e6, "2 m", "NFM", "s"), fav])
+        st.register("d", [(24e6, 1766e6)])
+        st.claim(1, "d")
+        st.remove_band(fav)
+        st.release(1, True)
+        self.assertIsNone(st.hop_of(fav, 145.5e6))
+        for _ in range(3):
+            i = st.pick("d")
+            self.assertEqual(i, 0)
+            st.release(i, True)
+        self.assertEqual(st.passes, 3)
+        self.assertNotIn(fav, st.bands)
+
 
 class EndToEnd(unittest.TestCase):
     """A whole scan pass on fake receivers; RtlSdr and the 20 s recording silence are replaced for the
