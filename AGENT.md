@@ -113,6 +113,19 @@ and keeps its files in its own folders (see Files below).
   when speech is confirmed (from `LISTEN_VOICE_S` = 1.5 s); the dwell setting is the maximum.
   `analyze` runs several times per listen, so it must stay free of side effects: the continuous-carrier
   counting is in `Detector.track`, called once at the end.
+- **Favorites** (`Band.favorite`: "manual" / "auto"; `add_favorite`, `remove_favorite`, `favorite_of`,
+  `auto_favorite`): a favorite is a ±`FAVORITE_HALF_HZ` range in `ranges.json`, marked by its `favorite` field,
+  never by its group's name (translated). Its hop has a `weight` (`FAVORITE_WEIGHT` = 4 visits per pass) and
+  a `phase` in the pass: `ScanState.pick` orders by (pass, coverers, place in the pass), so the 4 visits are
+  a quarter of a pass apart; a plain visits / weight order gave them back to back at the end of each pass.
+  A favorite starred during a scan is added to it at once (`ScanState.add_band`); a removed one is marked
+  `gone` (hop indices stay: claims and boosts hold them). Every removal (star, tab, ranges dialog) puts its
+  6.25 kHz key in `settings["favorites"]["refused"]` (±1 key matches), so the automatic add
+  (`FAVORITE_AUTO_N` = 5 speech conversations, whole history, not banned) never brings back what the user
+  took away. An unticked favorite is still one (not scanned). A region preset keeps the favorites
+  (`with_favorites`). Hits on a favorite hop keep the range's label (statistics by label).
+- **One play button per log row** (`play_choice`, `App.row_play_button`): Preview (the 2.5 s capture) until
+  the row's recording is on disk (its path is stored when the `Recording` closes), then Listen.
 - **Recency boost** (`ScanState.boosts`, `Scanner.revisit`): after a recording, the conversation's
   window gets a 0.1 s survey every `RECENCY_EVERY_S` = 8 s for `RECENCY_S` = 90 s, between two hops,
   and a listen if it is back.
@@ -187,7 +200,7 @@ and keeps its files in its own folders (see Files below).
 
 One column, top to bottom: the scan cards (one per receiver, full width), the scan bar (receivers,
 "N ranges" button opening the ranges modal, dwell, threshold, Start), then the tabs: Detection log
-(filters; the former Active tab is the "active" badge on its rows), Interference, Statistics,
+(filters; the former Active tab is the "active" badge on its rows), Interference, Favorites, Statistics,
 Settings. The whole column is in `scroll_column`. Buttons that carry an action have an icon and a text
 (`icon_button`); Start / Stop use the `primary` / `danger` CSS classes (white text) rather than the
 theme's `suggested-action`, which some GTK themes draw with dark text. Themes: "Dark" and "Light" draw GTK's built-in theme and icons with the app's palettes
@@ -334,6 +347,7 @@ tools/screenshots.py          # → docs/screenshots/*.png (about 30 s)
 - Steps run one after the other (`do` / `take`): a screenshot is saved before the next step changes the
   window. A new screenshot is a `take(...)` line, plus a link in the README's caption.
 - Files: `main.png` (README), `main-light.png`, `log-search.png`, `statistics.png`, `interference.png`,
+  `favorites.png`,
   `settings.png`, `settings-transcription.png`, `ranges.png`.
 
 ## Conventions

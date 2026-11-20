@@ -12,6 +12,7 @@ PC to a ClockworkPi uConsole.
 log lists what was heard, with its transcript.*
 More screenshots: [searching the transcripts](docs/screenshots/log-search.png) ·
 [statistics](docs/screenshots/statistics.png) · [interference](docs/screenshots/interference.png) ·
+[favorites](docs/screenshots/favorites.png) ·
 [frequency ranges](docs/screenshots/ranges.png) · [settings](docs/screenshots/settings.png) ·
 [notifications and transcription](docs/screenshots/settings-transcription.png) ·
 [light theme](docs/screenshots/main-light.png)
@@ -37,6 +38,12 @@ that, which keeps it fast on a small ARM board.
 - **Interference memory**: a frequency heard 3 times in a row without speech is banned for good; mark
   the false positives as "not interference", or ban by hand a capture that is not speech (the bug
   button of a log row).
+- **Favorites**: star a speech row of the log (the star next to the bug) and its channel is scanned 4
+  times per pass, its visits spread through the pass, so a busy frequency is not lost in a large scan.
+  They have their own tab (how many conversations, the last one to play) and their own group in the
+  frequency ranges, where they can be unticked or deleted. Optionally (**Settings → Recordings**), a
+  frequency heard in 5 conversations (interference does not count) becomes a favorite by itself; a
+  favorite you remove is never added back by itself.
 - **Several receivers** share the work, each taking first what only it can tune (HF on a Blog V4), never
   two on the same frequency. RTL-SDR dongles out of the box; HackRF, Airspy, SDRplay, LimeSDR, PlutoSDR…
   through SoapySDR (optional).
